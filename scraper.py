@@ -117,6 +117,9 @@ else:
     embeddings = torch.cat(embeddings).numpy()
     labels = torch.cat(labels).numpy()
 
+    np.save("embeddings.npy", embeddings)
+    np.save("labels.npy", labels)
+
 if embeddings:
     embeddings_2d = embeddings.reshape(embeddings.shape[0], -1)
 
