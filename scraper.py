@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 import os
 
+IMG = None
 sys.setrecursionlimit(10000)
 
 dataset = load_dataset("stochastic/random_streetview_images_pano_v0.0.2")
@@ -88,8 +89,9 @@ def collate_fn(batch):
     return {"pixel_values": torch.stack(images), "labels": torch.tensor(numeric_labels)}
 
 if os.path.exists(str(Path(__file__).absolute().parent) + "/np_cache/embeddings.npy"):
-    embeddings = np.load("embeddings.npy")
-    labels = np.load("labels.npy")
+    embeddings = np.load("np_cache/embeddings.npy")
+    labels = np.load("np_cache/labels.npy")
+    print("Loaded data via save at /np_cache")
 else:
     dataloader = DataLoader(dataset['train'], batch_size=16, shuffle=False, collate_fn=collate_fn)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -120,45 +122,73 @@ else:
     np.save("np_cache/embeddings.npy", embeddings)
     np.save("np_cache/labels.npy", labels)
 
-if embeddings:
-    embeddings_2d = embeddings.reshape(embeddings.shape[0], -1)
 
-    umap = UMAP(n_neighbors=30, min_dist=0.25, metric='cosine', random_state=42, init='spectral')
-    emb_umap = umap.fit_transform(embeddings_2d)
+embeddings_2d = embeddings.reshape(embeddings.shape[0], -1)
 
-    unique_labels = np.unique(labels)
-    centroids = np.zeros((len(unique_labels), 2))
+umap = UMAP(n_neighbors=50, min_dist=0.1, metric='euclidean', random_state=42, init='spectral')
+emb_umap = umap.fit_transform(embeddings_2d)
 
-    for i, lbl in enumerate(unique_labels):
-        mask = labels == lbl
-        centroids[i] = emb_umap[mask].mean(axis=0)
+unique_labels = np.unique(labels)
+centroids = np.zeros((len(unique_labels), 2))
 
-    plt.figure(figsize=(16, 8))
-    scatter = plt.scatter(
-        centroids[:, 0],
-        centroids[:, 1],
-        c=unique_labels,
-        cmap='tab20',
-        s=5,
-        alpha=0.7
+for i, lbl in enumerate(unique_labels):
+    mask = labels == lbl
+    centroids[i] = emb_umap[mask].mean(axis=0)
+
+plt.figure(figsize=(16, 8))
+scatter = plt.scatter(
+    centroids[:, 0],
+    centroids[:, 1],
+    c=unique_labels,
+    cmap='tab20',
+    s=5,
+    alpha=0.7
     )
 
-    for i, lbl in enumerate(unique_labels):
-        country = id2label_map.get(int(lbl), str(lbl))
-        plt.text(
-            centroids[i, 0],
-            centroids[i, 1],
-            country,
-            fontsize=12,
-            weight='bold',
-            ha='center',
-            va='center'
+for i, lbl in enumerate(unique_labels):
+    country = id2label_map.get(int(lbl), str(lbl))
+    plt.text(
+        centroids[i, 0],
+        centroids[i, 1],
+        country,
+        fontsize=12,
+        weight='bold',
+        ha='center',
+        va='center'
         )
 
-    plt.title("UMAP projection of Street View embeddings")
-    plt.colorbar(scatter)
-    plt.tight_layout()
-    plt.show()
+if IMG != None:
+    sample = preprocess(Image.open(IMG).convert('RGB')).unsqueeze(0)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model.to(device)
 
-else:
-    print("No embeddings were generated. Check feature extraction method.")
+    with torch.no_grad():
+        pixel_value = sample.to(device)
+        try:
+            outputs = model(pixel_value)
+            if hasattr(outputs, 'last_hidden_state'):
+                feats = outputs.last_hidden_state.mean(dim=1)
+            else:
+                feats = outputs.pooler_output
+        except Exception as e:
+            print(f"error extracting features at input img: {e}")
+
+        sample_emb = feats.cpu()
+
+    sample_emb = sample_emb.numpy()
+    sample_emb = sample_emb.reshape(sample_emb.shape[0], -1)
+    sample_umap = umap.transform(sample_emb)
+
+    plt.scatter(
+        sample_umap[:, 0],
+        sample_umap[:, 1],
+        c='red',
+        s=60,
+        edgecolor='black',
+        marker='X',
+    )
+
+plt.title("UMAP projection of Street View embeddings")
+plt.colorbar(scatter)
+plt.tight_layout()
+plt.show()
