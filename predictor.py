@@ -2,6 +2,61 @@ from PIL import Image
 import torch
 import torch.nn.functional as F
 
+iso_alpha2_to_country = {
+    "US": "United States",
+    "CA": "Canada",
+    "GB": "United Kingdom",
+    "FR": "France",
+    "DE": "Germany",
+    "JP": "Japan",
+    "CN": "China",
+    "IN": "India",
+    "BR": "Brazil",
+    "RU": "Russia",
+    "AU": "Australia",
+    "IT": "Italy",
+    "ES": "Spain",
+    "MX": "Mexico",
+    "ZA": "South Africa",
+    "KR": "South Korea",
+    "NG": "Nigeria",
+    "AR": "Argentina",
+    "SE": "Sweden",
+    "CH": "Switzerland",
+    "NL": "Netherlands",
+    "BE": "Belgium",
+    "NO": "Norway",
+    "DK": "Denmark",
+    "FI": "Finland",
+    "PL": "Poland",
+    "PT": "Portugal",
+    "GR": "Greece",
+    "TR": "Turkey",
+    "EG": "Egypt",
+    "SA": "Saudi Arabia",
+    "AE": "United Arab Emirates",
+    "IL": "Israel",
+    "TH": "Thailand",
+    "MY": "Malaysia",
+    "SG": "Singapore",
+    "NZ": "New Zealand",
+    "IE": "Ireland",
+    "AT": "Austria",
+    "HU": "Hungary",
+    "CZ": "Czech Republic",
+    "RO": "Romania",
+    "BG": "Bulgaria",
+    "HR": "Croatia",
+    "SI": "Slovenia",
+    "SK": "Slovakia",
+    "PH": "Philippines",
+    "VN": "Vietnam",
+    "ID": "Indonesia",
+    "PK": "Pakistan",
+    "BD": "Bangladesh",
+}
+
+
 class DeterminedPredictor:
     def __init__(self, model, processor, device):
         self.model = model
@@ -53,7 +108,7 @@ class DeterminedPredictor:
             if confident_predictions:
                 for i, (country, prob, idx) in enumerate(confident_predictions[:3]):
                     confidence = prob * 100
-                    print(f"   {i+1}. {country}: {prob:.4f} ({confidence:.1f}%)")
+                    print(f"   {i+1}. {country} // {iso_alpha2_to_country[country]}: {prob:.4f} ({confidence:.1f}%)")
             else:
                 top_idx = probs.argmax()
                 top_country = self.model.config.id2label[top_idx]
