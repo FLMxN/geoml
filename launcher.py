@@ -81,7 +81,6 @@ def predict(IMG):
     model_path = "D:/resnet50-finetuned"
     processor_path = "D:/resnet50-finetuned"  # Original model for processor
     
-    print("loading model...")
     model, processor, device = load_model_correctly(model_path, processor_path)
 
     predictor = DeterminedPredictor(model, processor, device)

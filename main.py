@@ -1,6 +1,6 @@
 from safetensors.torch import load_file
 from transformers import AutoModel, AutoFeatureExtractor
-from sklearn.preprocessing import StandardScaler, normalize
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics.pairwise import cosine_distances, euclidean_distances
 import torch
 import datasets
@@ -15,9 +15,14 @@ import sys
 from pathlib import Path
 import os
 from launcher import predict
+from sklearn.decomposition import PCA
+import pandas as pd
+from mpl_toolkits.mplot3d import Axes3D
+import plotly.express as px
 
-IMG = "pics/Ryazan-03.jpg"
+IMG = "pics/image.png"
 sys.setrecursionlimit(10000)
+np.random.seed(42)
 
 dataset = load_dataset("stochastic/random_streetview_images_pano_v0.0.2")
 dataset = dataset.cast_column("image", datasets.Image())
@@ -73,59 +78,254 @@ id2label_map = {
 }
 
 iso_alpha2_to_country = {
-    "US": "United States",
-    "CA": "Canada",
-    "GB": "United Kingdom",
-    "FR": "France",
-    "DE": "Germany",
-    "JP": "Japan",
-    "CN": "China",
-    "IN": "India",
-    "BR": "Brazil",
-    "RU": "Russia",
-    "AU": "Australia",
-    "IT": "Italy",
-    "ES": "Spain",
-    "MX": "Mexico",
-    "ZA": "South Africa",
-    "KR": "South Korea",
-    "NG": "Nigeria",
-    "AR": "Argentina",
-    "SE": "Sweden",
-    "CH": "Switzerland",
-    "NL": "Netherlands",
-    "BE": "Belgium",
-    "NO": "Norway",
-    "DK": "Denmark",
-    "FI": "Finland",
-    "PL": "Poland",
-    "PT": "Portugal",
-    "GR": "Greece",
-    "TR": "Turkey",
-    "EG": "Egypt",
-    "SA": "Saudi Arabia",
+    "AD": "Andorra",
     "AE": "United Arab Emirates",
-    "IL": "Israel",
-    "TH": "Thailand",
-    "MY": "Malaysia",
-    "SG": "Singapore",
-    "NZ": "New Zealand",
-    "IE": "Ireland",
+    "AF": "Afghanistan",
+    "AG": "Antigua and Barbuda",
+    "AI": "Anguilla",
+    "AL": "Albania",
+    "AM": "Armenia",
+    "AO": "Angola",
+    "AQ": "Antarctica",
+    "AR": "Argentina",
+    "AS": "American Samoa",
     "AT": "Austria",
-    "HU": "Hungary",
-    "CZ": "Czech Republic",
-    "RO": "Romania",
-    "BG": "Bulgaria",
-    "HR": "Croatia",
-    "SI": "Slovenia",
-    "SK": "Slovakia",
-    "PH": "Philippines",
-    "VN": "Vietnam",
-    "ID": "Indonesia",
-    "PK": "Pakistan",
+    "AU": "Australia",
+    "AW": "Aruba",
+    "AX": "Åland Islands",
+    "AZ": "Azerbaijan",
+    "BA": "Bosnia and Herzegovina",
+    "BB": "Barbados",
     "BD": "Bangladesh",
+    "BE": "Belgium",
+    "BF": "Burkina Faso",
+    "BG": "Bulgaria",
+    "BH": "Bahrain",
+    "BI": "Burundi",
+    "BJ": "Benin",
+    "BL": "Saint Barthélemy",
+    "BM": "Bermuda",
+    "BN": "Brunei Darussalam",
+    "BO": "Bolivia (Plurinational State of)",
+    "BQ": "Caribbean Netherlands",
+    "BR": "Brazil",
+    "BS": "The Bahamas",
+    "BT": "Bhutan",
+    "BV": "Bouvet Island",
+    "BW": "Botswana",
+    "BY": "Belarus",
+    "BZ": "Belize",
+    "CA": "Canada",
+    "CC": "Cocos (Keeling) Islands",
+    "CD": "Democratic Republic of the Congo",
+    "CF": "Central African Republic",
+    "CG": "Republic of the Congo",
+    "CH": "Switzerland",
+    "CI": "Ivory Coast",
+    "CK": "Cook Islands",
+    "CL": "Chile",
+    "CM": "Cameroon",
+    "CN": "People's Republic of China",
+    "CO": "Colombia",
+    "CR": "Costa Rica",
+    "CU": "Cuba",
+    "CV": "Cape Verde",
+    "CW": "Curaçao",
+    "CX": "Christmas Island",
+    "CY": "Cyprus",
+    "CZ": "Czech Republic",
+    "DE": "Germany",
+    "DJ": "Djibouti",
+    "DK": "Denmark",
+    "DM": "Dominica",
+    "DO": "Dominican Republic",
+    "DZ": "Algeria",
+    "EC": "Ecuador",
+    "EE": "Estonia",
+    "EG": "Egypt",
+    "EH": "Western Sahara",
+    "ER": "Eritrea",
+    "ES": "Spain",
+    "ET": "Ethiopia",
+    "FI": "Finland",
+    "FJ": "Fiji",
+    "FM": "Federated States of Micronesia",
+    "FO": "Faroe Islands",
+    "FR": "France",
+    "GA": "Gabon",
+    "GB": "United Kingdom",
+    "GD": "Grenada",
+    "GE": "Georgia",
+    "GF": "French Guiana",
+    "GG": "Guernsey",
+    "GH": "Ghana",
+    "GI": "Gibraltar",
+    "GL": "Greenland",
+    "GM": "The Gambia",
+    "GN": "Guinea",
+    "GP": "Guadeloupe",
+    "GQ": "Equatorial Guinea",
+    "GR": "Greece",
+    "GS": "South Georgia and the South Sandwich Islands",
+    "GT": "Guatemala",
+    "GU": "Guam",
+    "GW": "Guinea-Bissau",
+    "GY": "Guyana",
+    "HK": "Hong Kong",
+    "HM": "Heard Island and McDonald Islands",
+    "HN": "Honduras",
+    "HR": "Croatia",
+    "HT": "Haiti",
+    "HU": "Hungary",
+    "ID": "Indonesia",
+    "IE": "Ireland",
+    "IL": "Israel",
+    "IM": "Isle of Man",
+    "IN": "India",
+    "IO": "British Indian Ocean Territory",
+    "IQ": "Iraq",
+    "IR": "Islamic Republic of Iran",
+    "IS": "Iceland",
+    "IT": "Italy",
+    "JE": "Jersey",
+    "JM": "Jamaica",
+    "JO": "Jordan",
+    "JP": "Japan",
+    "KE": "Kenya",
+    "KG": "Kyrgyzstan",
+    "KH": "Cambodia",
+    "KI": "Kiribati",
+    "KM": "Comoros",
+    "KN": "Saint Kitts and Nevis",
+    "KP": "Democratic People's Republic of Korea",
+    "KR": "Republic of Korea",
+    "KW": "Kuwait",
+    "KY": "Cayman Islands",
+    "KZ": "Kazakhstan",
+    "LA": "Lao People's Democratic Republic",
+    "LB": "Lebanon",
+    "LC": "Saint Lucia",
+    "LI": "Liechtenstein",
+    "LK": "Sri Lanka",
+    "LR": "Liberia",
+    "LS": "Lesotho",
+    "LT": "Lithuania",
+    "LU": "Luxembourg",
+    "LV": "Latvia",
+    "LY": "Libya",
+    "MA": "Morocco",
+    "MC": "Monaco",
+    "MD": "Moldova (Republic of)",
+    "ME": "Montenegro",
+    "MF": "Saint Martin (French part)",
+    "MG": "Madagascar",
+    "MH": "Marshall Islands",
+    "MK": "North Macedonia",
+    "ML": "Mali",
+    "MM": "Myanmar",
+    "MN": "Mongolia",
+    "MO": "Macao",
+    "MP": "Northern Mariana Islands",
+    "MQ": "Martinique",
+    "MR": "Mauritania",
+    "MS": "Montserrat",
+    "MT": "Malta",
+    "MU": "Mauritius",
+    "MV": "Maldives",
+    "MW": "Malawi",
+    "MX": "Mexico",
+    "MY": "Malaysia",
+    "MZ": "Mozambique",
+    "NA": "Namibia",
+    "NC": "New Caledonia",
+    "NE": "Niger",
+    "NF": "Norfolk Island",
+    "NG": "Nigeria",
+    "NI": "Nicaragua",
+    "NL": "Netherlands",
+    "NO": "Norway",
+    "NP": "Nepal",
+    "NR": "Nauru",
+    "NU": "Niue",
+    "NZ": "New Zealand",
+    "OM": "Oman",
+    "PA": "Panama",
+    "PE": "Peru",
+    "PF": "French Polynesia",
+    "PG": "Papua New Guinea",
+    "PH": "Philippines",
+    "PK": "Pakistan",
+    "PL": "Poland",
+    "PM": "Saint Pierre and Miquelon",
+    "PN": "Pitcairn",
+    "PR": "Puerto Rico",
+    "PT": "Portugal",
+    "PW": "Palau",
+    "PY": "Paraguay",
+    "QA": "Qatar",
+    "RE": "Réunion",
+    "RO": "Romania",
+    "RS": "Serbia",
+    "RU": "Russian Federation",
+    "RW": "Rwanda",
+    "SA": "Saudi Arabia",
+    "SB": "Solomon Islands",
+    "SC": "Seychelles",
+    "SD": "Sudan",
+    "SE": "Sweden",
+    "SG": "Singapore",
+    "SH": "Saint Helena, Ascension and Tristan da Cunha",
+    "SI": "Slovenia",
+    "SJ": "Svalbard and Jan Mayen",
+    "SK": "Slovakia",
+    "SL": "Sierra Leone",
+    "SM": "San Marino",
+    "SN": "Senegal",
+    "SO": "Somalia",
+    "SR": "Suriname",
+    "SS": "South Sudan",
+    "ST": "Sao Tome and Principe",
+    "SV": "El Salvador",
+    "SX": "Sint Maarten (Dutch part)",
+    "SY": "Syrian Arab Republic",
+    "SZ": "Eswatini",
+    "TC": "Turks and Caicos Islands",
+    "TD": "Chad",
+    "TF": "French Southern and Antarctic Lands",
+    "TG": "Togo",
+    "TH": "Thailand",
+    "TJ": "Tajikistan",
+    "TK": "Tokelau",
+    "TL": "Timor-Leste",
+    "TM": "Turkmenistan",
+    "TN": "Tunisia",
+    "TO": "Tonga",
+    "TR": "Turkey",
+    "TT": "Trinidad and Tobago",
+    "TV": "Tuvalu",
+    "TZ": "Tanzania (United Republic of)",
+    "TW": "Taiwan",
+    "UA": "Ukraine",
+    "UG": "Uganda",
+    "UM": "United States Minor Outlying Islands",
+    "US": "United States",
+    "UY": "Uruguay",
+    "UZ": "Uzbekistan",
+    "VA": "Holy See",
+    "VC": "Saint Vincent and the Grenadines",
+    "VE": "Venezuela (Bolivarian Republic of)",
+    "VG": "British Virgin Islands",
+    "VI": "United States Virgin Islands",
+    "VN": "Viet Nam",
+    "VU": "Vanuatu",
+    "WF": "Wallis and Futuna",
+    "WS": "Samoa",
+    "YE": "Yemen",
+    "YT": "Mayotte",
+    "ZA": "South Africa",
+    "ZM": "Zambia",
+    "ZW": "Zimbabwe",
 }
-
 
 def collate_fn(batch):
     images = []
@@ -153,64 +353,35 @@ else:
         for x, batch in enumerate(dataloader, 1):
             print(f'started iteration {x}')            
             pixel_values = batch['pixel_values'].to(device)
-            region_labels = batch['labels']
-                
+            region_labels = batch['labels']           
             try:
                 outputs = model(pixel_values)
-                if hasattr(outputs, 'last_hidden_state'):
-                    feats = outputs.last_hidden_state.mean(dim=1)
-                else:
-                    feats = outputs.pooler_output
-                feats = feats / feats.norm(dim=1, keepdim=True)
-            except Exception as e:
-                print(f"error extracting features: {e}")
-                continue
-                
-            embeddings.append(feats.cpu())
-            labels.append(region_labels)
+                feats = outputs.pooler_output
+                embeddings.append(feats.cpu())
+                labels.append(region_labels)
+            except:
+                print('lulz')
     
-    embeddings = torch.cat(embeddings).numpy()
-    labels = torch.cat(labels).numpy()
+        embeddings = torch.cat(embeddings).numpy()
+        labels = torch.cat(labels).numpy()
 
     np.save("np_cache/embeddings.npy", embeddings)
     np.save("np_cache/labels.npy", labels)
 
-umap = UMAP(n_neighbors=50, min_dist=0.1, metric='euclidean', random_state=42, init='spectral')
+embeddings = embeddings.squeeze()
 
-embeddings_2d = StandardScaler().fit_transform(embeddings.reshape(embeddings.shape[0], -1))
-embeddings_2d = embeddings_2d.reshape(embeddings_2d.shape[0], -1)
-print('transforming umap...')
-emb_umap = umap.fit_transform(embeddings_2d)
+df = pd.DataFrame(embeddings)
+df['label'] = labels
 
-unique_labels = np.unique(labels)
-centroids = np.zeros((len(unique_labels), 2))
+centroids = df.groupby('label').mean().to_numpy()
+classes = df['label'].unique()
 
-print('calculating centroids...')
-for i, lbl in enumerate(unique_labels):
-    mask = labels == lbl
-    centroids[i] = emb_umap[mask].mean(axis=0)
+# scaler = StandardScaler().fit(embeddings.reshape(embeddings.shape[0], -1))
+# embeds_scaled = scaler.transform(embeddings.reshape(embeddings.shape[0], -1))
 
-plt.figure(figsize=(16, 8))
-scatter = plt.scatter(
-    centroids[:, 0],
-    centroids[:, 1],
-    c=unique_labels,
-    cmap='tab20',
-    s=5,
-    alpha=0.7
-    )
+# embeddings_2d = embeddings.reshape((embeddings.shape[0], -1))
+# embeds_scaled = StandardScaler().fit_transform(embeddings_2d)
 
-for i, lbl in enumerate(unique_labels):
-    country = id2label_map.get(int(lbl), str(lbl))
-    plt.text(
-        centroids[i, 0],
-        centroids[i, 1],
-        country,
-        fontsize=12,
-        weight='bold',
-        ha='center',
-        va='center'
-        )
 
 if IMG != None:
     print('preprocessing sample...')
@@ -222,37 +393,43 @@ if IMG != None:
         pixel_value = sample.to(device)
         try:
             outputs = model(pixel_value)
-            if hasattr(outputs, 'last_hidden_state'):
-                feats = outputs.last_hidden_state.mean(dim=1)
-            else:
-                feats = outputs.pooler_output
-            feats = feats / feats.norm(dim=1, keepdim=True)
-        except Exception as e:
-            print(f"error extracting features at input img: {e}")
+            feats = outputs.pooler_output
+            sample_emb = feats.cpu().numpy().reshape(1, -1)
+        except:
+            print('lulz2')
 
-        sample_emb = feats.cpu()
+    # sample_emb = scaler.transform(sample_emb.reshape(sample_emb.shape[0], -1))
+    # sample_scaled = scaler.transform(sample_emb)
 
-    sample_emb = sample_emb.numpy()
+all_points = np.concatenate([centroids, sample_emb], axis=0)
+scaled = StandardScaler().fit_transform(all_points)
 
-    print('retransforming umap...')
-    sample_emb = StandardScaler().fit_transform(sample_emb.reshape(sample_emb.shape[0], -1))
-    sample_emb = sample_emb.reshape(1, -1)
-    sample_umap = umap.transform(sample_emb)
+# proj = PCA(n_components=48).fit_transform(scaled)
+umap = UMAP(n_components=3, metric='euclidean', random_state=42).fit_transform(scaled)
 
-    plt.scatter(
-        sample_umap[:, 0],
-        sample_umap[:, 1],
-        c='red',
-        s=60,
-        edgecolor='black',
-        marker='X',
-    )
+proj_centroids = umap[:-1]
+proj_sample = umap[-1]
 
-closest_euc_idx = np.argmin(euclidean_distances(sample_emb, embeddings_2d))
-print("closest match (via euclidean):", id2label_map[int(labels[closest_euc_idx])] + " // " + iso_alpha2_to_country[id2label_map[int(labels[closest_euc_idx])]])
-closest_cos_idx = np.argmin(cosine_distances(sample_emb, embeddings_2d))
-print("closest match (via cosine):", id2label_map[int(labels[closest_cos_idx])] + " // " + iso_alpha2_to_country[id2label_map[int(labels[closest_cos_idx])]])
+# print("embeds_scaled shape:", embeds_scaled.shape)
+# print("embeds_scaled:", embeddings)
+# print("sample_2d shape:", sample_2d.shape)
+# print("sample_2d:", sample_2d)
+
+def volume_plot():
+    coord = pd.DataFrame(proj_centroids, columns=['x','y','z'])
+    coord['label'] = list(map(lambda x: iso_alpha2_to_country[id2label_map[x]], classes))
+    coord.loc[len(coord)] = [proj_sample[0], proj_sample[1], proj_sample[2], 'X']
+
+    fig = px.scatter_3d(coord, x='x', y='y', z='z', color='label', title="3D embedding projection", text=coord['label'])
+    fig.show()
+
+def distance():
+    closest_euc_idx = np.argmin(euclidean_distances(sample_emb, centroids))
+    print("closest match (via euclidean):", id2label_map[int(labels[closest_euc_idx])] + " // " + iso_alpha2_to_country[id2label_map[int(labels[closest_euc_idx])]])
+    closest_cos_idx = np.argmin(cosine_distances(sample_emb, centroids))
+    print("closest match (via cosine):", id2label_map[int(labels[closest_cos_idx])] + " // " + iso_alpha2_to_country[id2label_map[int(labels[closest_cos_idx])]])
+
+
+distance()
+volume_plot()
 predict(IMG=IMG)
-
-plt.tight_layout()
-plt.show()
