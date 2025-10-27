@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-"""
-Fixed script for extracting ResNet50 features for a single image,
-with robust model loading, preprocessing, and UMAP plotting helpers.
-"""
 import pandas as pd
 import os
 import sys
@@ -16,10 +11,13 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from umap import UMAP
 from tqdm import tqdm
+from launcher import predict_image
+from transformers import AutoImageProcessor
 
-IMG = "pics/giper2.jpg"   # single image path
+IMG = "pics/image.jpg"   # single image path
 HEIGHT = 561              # desired target height in pixels
-# Seeds
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 np.random.seed(42)
 torch.manual_seed(42)
 torch.cuda.manual_seed_all(42)
@@ -61,11 +59,11 @@ def lowres(img: Image.Image, target_height: int = HEIGHT) -> Image.Image:
     orig_width, orig_height = img.size
     aspect_ratio = orig_width / orig_height
     new_width = int(round(target_height * aspect_ratio))
-    resized_img = img.resize((new_width, target_height), Image.Resampling.LANCZOS)
+    resized_img = img.resize((new_width, target_height))
     return resized_img
 
 preprocess = transforms.Compose([
-    transforms.ToTensor(),  # to [0,1]
+    transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406],
                          std=[0.229, 0.224, 0.225])
 ])
@@ -135,7 +133,7 @@ def load_model_checkpoint(path: str, device: torch.device, num_classes=56):
         res = model.load_state_dict(state_dict, strict=False)
         print("Non-strict load_state_dict result:", res)
 
-    model.to(device)
+    model.to(DEVICE)
     model.eval()
     return model
 
@@ -159,7 +157,7 @@ def extract_sample_embedding(model: nn.Module, image_path: str, device: torch.de
 # UMAP plotting helper
 # --------------------------
 def project_and_plot(embs: np.ndarray, sample_emb: np.ndarray,
-                     id2label_map: dict = None, iso_alpha2_to_country: dict = None,
+                     id2label_map, labels,
                      show_text=True):
     
     embeddings = embs.squeeze()
@@ -167,20 +165,14 @@ def project_and_plot(embs: np.ndarray, sample_emb: np.ndarray,
     df['label'] = labels
     centroids = df.groupby('label').mean().to_numpy()
     classes = df['label'].unique()
-    
-    if centroids is None or centroids.size == 0:
-        all_points = sample_emb
-    else:
-        all_points = np.concatenate([centroids, sample_emb], axis=0)
+       
+    all_points = np.concatenate([centroids, sample_emb], axis=0)
 
     scaled = StandardScaler().fit_transform(all_points)
     umap_2d = UMAP(n_components=2, random_state=42).fit_transform(scaled)
-    if centroids is None or centroids.size == 0:
-        plane_centroids = np.zeros((0, 2))
-        plane_sample = umap_2d[0]
-    else:
-        plane_centroids = umap_2d[:-1]
-        plane_sample = umap_2d[-1]
+
+    plane_centroids = umap_2d[:-1]
+    plane_sample = umap_2d[-1]
 
     plt.figure(figsize=(12, 8))
     if plane_centroids.shape[0] > 0:
@@ -194,7 +186,7 @@ def project_and_plot(embs: np.ndarray, sample_emb: np.ndarray,
     if show_text and plane_centroids.shape[0] > 0 and classes is not None and id2label_map is not None:
         for i, lbl in enumerate(classes):
             alpha2 = id2label_map.get(int(lbl), str(lbl))
-            plt.text(plane_centroids[i, 0], plane_centroids[i, 1], alpha2, fontsize=9,
+            plt.text(plane_centroids[i, 0], plane_centroids[i, 1], alpha2, fontsize=12,
                      ha='center', va='center')
 
     plt.legend()
@@ -208,17 +200,14 @@ if __name__ == "__main__":
         labels = np.load("np_cache/labels.npy")
         print("loaded data via save at /np_cache")
 
-    # choose device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
-    # path to your checkpoint - change as needed
     ckpt_path = "D:/resnet50-finetuned_raw/resnet50_streetview.pth"
     model = load_model_checkpoint(ckpt_path, device=device, num_classes=56)
 
-    # extract single image embedding
     sample_emb, sample_img = extract_sample_embedding(model, IMG, device=device)
-    print("Extracted sample embedding shape:", sample_emb.shape)  # should be (1, D), D typically 2048
+    project_and_plot(embs=embeddings, sample_emb=sample_emb, id2label_map=id2label_map, labels=labels)
 
-    # Optional: example plotting with no centroids (just show where sample maps)
-    project_and_plot(embs=embeddings, sample_emb=sample_emb, id2label_map=id2label_map, iso_alpha2_to_country=iso_alpha2_to_country)
+    processor = AutoImageProcessor.from_pretrained("D:/resnet50-finetuned", use_fast=True)
+    print(predict_image(image=sample_img, processor=processor, model=model))

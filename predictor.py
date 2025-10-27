@@ -1,6 +1,9 @@
 from PIL import Image
 import torch
 import torch.nn.functional as F
+from transformers import AutoImageProcessor
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 iso_alpha2_to_country = {
     "AD": "Andorra",
@@ -252,7 +255,7 @@ iso_alpha2_to_country = {
 }
 
 class DeterminedPredictor:
-    def __init__(self, model, processor, device):
+    def __init__(self, model, processor=AutoImageProcessor.from_pretrained("D:/resnet50-finetuned", use_fast=True), device=DEVICE):
         self.model = model
         self.processor = processor
         self.device = device

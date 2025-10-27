@@ -1,5 +1,5 @@
 from safetensors.torch import load_file
-from transformers import AutoModel, AutoFeatureExtractor
+from transformers import AutoModel, AutoFeatureExtractor, AutoImageProcessor, ResNetForImageClassification, AutoConfig
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics.pairwise import cosine_distances, euclidean_distances
 import torch
@@ -15,18 +15,19 @@ import numpy as np
 import sys
 from pathlib import Path
 import os
-from launcher import predict
+from launcher import predict_image
 import pandas as pd
 import plotly.express as px
 from tqdm import tqdm
 
-IMG = "pics/image.png"
+IMG = "pics/image.jpg"
 
 FOV = 75
 HORIZONTAL = 0
 VERTICAL = 0
 HEIGHT = 561
 WIDTH = 997
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 sys.setrecursionlimit(10000)
 np.random.seed(42)
@@ -36,7 +37,10 @@ torch.cuda.manual_seed_all(42)
 dataset = load_dataset("stochastic/random_streetview_images_pano_v0.0.2")
 dataset = dataset.cast_column("image", datasets.Image())
 
+processor = AutoImageProcessor.from_pretrained("D:/resnet50-finetuned", use_fast=True)
 model = AutoModel.from_pretrained("D:/resnet50-finetuned")
+
+model = model.to(DEVICE)
 model.eval()
 
 try:
@@ -361,7 +365,6 @@ if os.path.exists(str(Path(__file__).absolute().parent) + "/np_cache/embeddings.
 else:
     dataloader = DataLoader(dataset['train'], batch_size=16, shuffle=False, collate_fn=collate_fn)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model.to(device)
 
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Extracting embeddings"):           
@@ -393,17 +396,15 @@ if IMG != None:
     print('preprocessing sample...')
     sample_raw = lowres(Image.open(IMG).convert('RGB'))
     sample = preprocess(sample_raw).unsqueeze(0)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model.to(device)
 
     with torch.no_grad():
-        pixel_value = sample.to(device)
+        pixel_value = sample.to(DEVICE)
         try:
             outputs = model(pixel_value)
             feats = outputs.pooler_output
             sample_emb = feats.cpu().numpy().reshape(1, -1)
-        except:
-            print('lulz2')
+        except Exception as e:
+            print(e)
 
 all_points = np.concatenate([centroids, sample_emb], axis=0)
 scaled = StandardScaler().fit_transform(all_points)
@@ -460,7 +461,7 @@ def distance():
     closest_cos_idx = np.argmin(cosine_distances(sample_emb, centroids))
     print("closest match (via cosine):", id2label_map[int(classes[closest_cos_idx])] + " // " + iso_alpha2_to_country[id2label_map[int(classes[closest_cos_idx])]] + " <-- #2 METRIC")
 
-predict(IMG=sample_raw)
+predict_image(image=sample_raw, processor=processor, model=model)
 distance()
 plane_plot()
 input("Press any key to make 3D plot... <-- #3 METRIC")
