@@ -20,7 +20,7 @@ import pandas as pd
 import plotly.express as px
 from tqdm import tqdm
 
-IMG = "pics/giper2.jpg"
+IMG = "pics/image.png"
 
 FOV = 75
 HORIZONTAL = 0

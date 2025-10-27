@@ -1,102 +1,28 @@
-from safetensors.torch import load_file
-from transformers import AutoModel, AutoFeatureExtractor
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics.pairwise import cosine_distances, euclidean_distances
-import torch
-from torch import nn
-import datasets
-from datasets import Dataset, load_dataset
-from torchvision.transforms.functional import InterpolationMode
-from torch.utils.data import DataLoader
-from torchvision import transforms, models
-from umap import UMAP
-import matplotlib.pyplot as plt
-from PIL import Image
-import numpy as np
+#!/usr/bin/env python3
+"""
+Fixed script for extracting ResNet50 features for a single image,
+with robust model loading, preprocessing, and UMAP plotting helpers.
+"""
+import pandas as pd
+import os
 import sys
 from pathlib import Path
-import os
-from launcher import predict
-import pandas as pd
-import plotly.express as px
+import numpy as np
+import torch
+from torch import nn
+from torchvision import transforms, models
+from PIL import Image
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler
+from umap import UMAP
 from tqdm import tqdm
 
-IMG = "pics/giper2.jpg"
-
-FOV = 75
-HORIZONTAL = 0
-VERTICAL = 0
-HEIGHT = 561
-WIDTH = 997
-
-sys.setrecursionlimit(10000)
+IMG = "pics/giper2.jpg"   # single image path
+HEIGHT = 561              # desired target height in pixels
+# Seeds
 np.random.seed(42)
 torch.manual_seed(42)
 torch.cuda.manual_seed_all(42)
-
-dataset = load_dataset("stochastic/random_streetview_images_pano_v0.0.2")
-dataset = dataset.cast_column("image", datasets.Image())
-
-class ResNet50FeatureExtractor(nn.Module):
-    def __init__(self, num_classes=56):
-        super().__init__()
-        backbone = models.resnet50(weights=None)
-        num_ftrs = backbone.fc.in_features
-        backbone.fc = nn.Linear(num_ftrs, num_classes)
-        self.backbone = backbone
-
-    def forward(self, x, return_features=False):
-        x = self.backbone.conv1(x)
-        x = self.backbone.bn1(x)
-        x = self.backbone.relu(x)
-        x = self.backbone.maxpool(x)
-
-        x = self.backbone.layer1(x)
-        x = self.backbone.layer2(x)
-        x = self.backbone.layer3(x)
-        x = self.backbone.layer4(x)
-
-        pooled = self.backbone.avgpool(x)
-        feats = torch.flatten(pooled, 1)
-        logits = self.backbone.fc(feats)
-
-        return feats if return_features else logits
-
-model = ResNet50FeatureExtractor(num_classes=56)
-state_dict = torch.load('D:/resnet50-finetuned_raw/resnet50_streetview.pth', map_location='cuda')
-model.load_state_dict(state_dict)
-model.eval()
-
-try:
-    feature_extractor = AutoFeatureExtractor.from_pretrained("D:/resnet50-finetuned")
-    print("feature extractor found")
-except:
-    feature_extractor = None
-    print("no feature extractor found, using manual preprocessing")
-
-embeddings = []
-labels = []
-
-preprocess = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                         std=[0.229, 0.224, 0.225])
-])
-
-label2id_map = {
-    "AD": 7, "AE": 16, "AR": 15, "AU": 43, "BD": 30,
-    "BE": 26, "BG": 4, "BR": 46, "BT": 48, "BW": 31,
-    "CA": 3, "CH": 49, "CL": 34, "CO": 17, "CZ": 45,
-    "DE": 25, "DK": 36, "EE": 12, "ES": 41, "FI": 23,
-    "FR": 28, "GB": 0, "GR": 53, "HK": 22, "HR": 24,
-    "HU": 14, "ID": 42, "IE": 13, "IL": 51, "IS": 6,
-    "IT": 27, "JP": 35, "KH": 10, "KR": 1, "LT": 32,
-    "LV": 50, "MX": 29, "MY": 9, "NL": 2, "NO": 5,
-    "NZ": 37, "PE": 44, "PL": 47, "PT": 21, "RO": 38,
-    "RU": 52, "SE": 40, "SG": 19, "SI": 55, "SK": 8,
-    "SZ": 11, "TH": 18, "TW": 33, "UA": 39, "US": 54,
-    "ZA": 20
-}
 
 id2label_map = {
     7: "AD", 16: "AE", 15: "AR", 43: "AU", 30: "BD",
@@ -114,301 +40,185 @@ id2label_map = {
 }
 
 iso_alpha2_to_country = {
-    "AD": "Andorra",
-    "AE": "United Arab Emirates",
-    "AF": "Afghanistan",
-    "AG": "Antigua and Barbuda",
-    "AI": "Anguilla",
-    "AL": "Albania",
-    "AM": "Armenia",
-    "AO": "Angola",
-    "AQ": "Antarctica",
-    "AR": "Argentina",
-    "AS": "American Samoa",
-    "AT": "Austria",
-    "AU": "Australia",
-    "AW": "Aruba",
-    "AX": "Åland Islands",
-    "AZ": "Azerbaijan",
-    "BA": "Bosnia and Herzegovina",
-    "BB": "Barbados",
-    "BD": "Bangladesh",
-    "BE": "Belgium",
-    "BF": "Burkina Faso",
-    "BG": "Bulgaria",
-    "BH": "Bahrain",
-    "BI": "Burundi",
-    "BJ": "Benin",
-    "BL": "Saint Barthélemy",
-    "BM": "Bermuda",
-    "BN": "Brunei Darussalam",
-    "BO": "Bolivia (Plurinational State of)",
-    "BQ": "Caribbean Netherlands",
-    "BR": "Brazil",
-    "BS": "The Bahamas",
-    "BT": "Bhutan",
-    "BV": "Bouvet Island",
-    "BW": "Botswana",
-    "BY": "Belarus",
-    "BZ": "Belize",
-    "CA": "Canada",
-    "CC": "Cocos (Keeling) Islands",
-    "CD": "Democratic Republic of the Congo",
-    "CF": "Central African Republic",
-    "CG": "Republic of the Congo",
-    "CH": "Switzerland",
-    "CI": "Ivory Coast",
-    "CK": "Cook Islands",
-    "CL": "Chile",
-    "CM": "Cameroon",
-    "CN": "People's Republic of China",
-    "CO": "Colombia",
-    "CR": "Costa Rica",
-    "CU": "Cuba",
-    "CV": "Cape Verde",
-    "CW": "Curaçao",
-    "CX": "Christmas Island",
-    "CY": "Cyprus",
-    "CZ": "Czech Republic",
-    "DE": "Germany",
-    "DJ": "Djibouti",
-    "DK": "Denmark",
-    "DM": "Dominica",
-    "DO": "Dominican Republic",
-    "DZ": "Algeria",
-    "EC": "Ecuador",
-    "EE": "Estonia",
-    "EG": "Egypt",
-    "EH": "Western Sahara",
-    "ER": "Eritrea",
-    "ES": "Spain",
-    "ET": "Ethiopia",
-    "FI": "Finland",
-    "FJ": "Fiji",
-    "FM": "Federated States of Micronesia",
-    "FO": "Faroe Islands",
-    "FR": "France",
-    "GA": "Gabon",
-    "GB": "United Kingdom",
-    "GD": "Grenada",
-    "GE": "Georgia",
-    "GF": "French Guiana",
-    "GG": "Guernsey",
-    "GH": "Ghana",
-    "GI": "Gibraltar",
-    "GL": "Greenland",
-    "GM": "The Gambia",
-    "GN": "Guinea",
-    "GP": "Guadeloupe",
-    "GQ": "Equatorial Guinea",
-    "GR": "Greece",
-    "GS": "South Georgia and the South Sandwich Islands",
-    "GT": "Guatemala",
-    "GU": "Guam",
-    "GW": "Guinea-Bissau",
-    "GY": "Guyana",
-    "HK": "Hong Kong",
-    "HM": "Heard Island and McDonald Islands",
-    "HN": "Honduras",
-    "HR": "Croatia",
-    "HT": "Haiti",
-    "HU": "Hungary",
-    "ID": "Indonesia",
-    "IE": "Ireland",
-    "IL": "Israel",
-    "IM": "Isle of Man",
-    "IN": "India",
-    "IO": "British Indian Ocean Territory",
-    "IQ": "Iraq",
-    "IR": "Islamic Republic of Iran",
-    "IS": "Iceland",
-    "IT": "Italy",
-    "JE": "Jersey",
-    "JM": "Jamaica",
-    "JO": "Jordan",
-    "JP": "Japan",
-    "KE": "Kenya",
-    "KG": "Kyrgyzstan",
-    "KH": "Cambodia",
-    "KI": "Kiribati",
-    "KM": "Comoros",
-    "KN": "Saint Kitts and Nevis",
-    "KP": "Democratic People's Republic of Korea",
-    "KR": "Republic of Korea",
-    "KW": "Kuwait",
-    "KY": "Cayman Islands",
-    "KZ": "Kazakhstan",
-    "LA": "Lao People's Democratic Republic",
-    "LB": "Lebanon",
-    "LC": "Saint Lucia",
-    "LI": "Liechtenstein",
-    "LK": "Sri Lanka",
-    "LR": "Liberia",
-    "LS": "Lesotho",
-    "LT": "Lithuania",
-    "LU": "Luxembourg",
-    "LV": "Latvia",
-    "LY": "Libya",
-    "MA": "Morocco",
-    "MC": "Monaco",
-    "MD": "Moldova (Republic of)",
-    "ME": "Montenegro",
-    "MF": "Saint Martin (French part)",
-    "MG": "Madagascar",
-    "MH": "Marshall Islands",
-    "MK": "North Macedonia",
-    "ML": "Mali",
-    "MM": "Myanmar",
-    "MN": "Mongolia",
-    "MO": "Macao",
-    "MP": "Northern Mariana Islands",
-    "MQ": "Martinique",
-    "MR": "Mauritania",
-    "MS": "Montserrat",
-    "MT": "Malta",
-    "MU": "Mauritius",
-    "MV": "Maldives",
-    "MW": "Malawi",
-    "MX": "Mexico",
-    "MY": "Malaysia",
-    "MZ": "Mozambique",
-    "NA": "Namibia",
-    "NC": "New Caledonia",
-    "NE": "Niger",
-    "NF": "Norfolk Island",
-    "NG": "Nigeria",
-    "NI": "Nicaragua",
-    "NL": "Netherlands",
-    "NO": "Norway",
-    "NP": "Nepal",
-    "NR": "Nauru",
-    "NU": "Niue",
-    "NZ": "New Zealand",
-    "OM": "Oman",
-    "PA": "Panama",
-    "PE": "Peru",
-    "PF": "French Polynesia",
-    "PG": "Papua New Guinea",
-    "PH": "Philippines",
-    "PK": "Pakistan",
-    "PL": "Poland",
-    "PM": "Saint Pierre and Miquelon",
-    "PN": "Pitcairn",
-    "PR": "Puerto Rico",
-    "PT": "Portugal",
-    "PW": "Palau",
-    "PY": "Paraguay",
-    "QA": "Qatar",
-    "RE": "Réunion",
-    "RO": "Romania",
-    "RS": "Serbia",
-    "RU": "Russian Federation",
-    "RW": "Rwanda",
-    "SA": "Saudi Arabia",
-    "SB": "Solomon Islands",
-    "SC": "Seychelles",
-    "SD": "Sudan",
-    "SE": "Sweden",
-    "SG": "Singapore",
-    "SH": "Saint Helena, Ascension and Tristan da Cunha",
-    "SI": "Slovenia",
-    "SJ": "Svalbard and Jan Mayen",
-    "SK": "Slovakia",
-    "SL": "Sierra Leone",
-    "SM": "San Marino",
-    "SN": "Senegal",
-    "SO": "Somalia",
-    "SR": "Suriname",
-    "SS": "South Sudan",
-    "ST": "Sao Tome and Principe",
-    "SV": "El Salvador",
-    "SX": "Sint Maarten (Dutch part)",
-    "SY": "Syrian Arab Republic",
-    "SZ": "Eswatini",
-    "TC": "Turks and Caicos Islands",
-    "TD": "Chad",
-    "TF": "French Southern and Antarctic Lands",
-    "TG": "Togo",
-    "TH": "Thailand",
-    "TJ": "Tajikistan",
-    "TK": "Tokelau",
-    "TL": "Timor-Leste",
-    "TM": "Turkmenistan",
-    "TN": "Tunisia",
-    "TO": "Tonga",
-    "TR": "Turkey",
-    "TT": "Trinidad and Tobago",
-    "TV": "Tuvalu",
-    "TZ": "Tanzania (United Republic of)",
-    "TW": "Taiwan",
-    "UA": "Ukraine",
-    "UG": "Uganda",
-    "UM": "United States Minor Outlying Islands",
-    "US": "United States",
-    "UY": "Uruguay",
-    "UZ": "Uzbekistan",
-    "VA": "Holy See",
-    "VC": "Saint Vincent and the Grenadines",
-    "VE": "Venezuela (Bolivarian Republic of)",
-    "VG": "British Virgin Islands",
-    "VI": "United States Virgin Islands",
-    "VN": "Viet Nam",
-    "VU": "Vanuatu",
-    "WF": "Wallis and Futuna",
-    "WS": "Samoa",
-    "YE": "Yemen",
-    "YT": "Mayotte",
-    "ZA": "South Africa",
-    "ZM": "Zambia",
-    "ZW": "Zimbabwe",
+    "AD": "Andorra", "AE": "United Arab Emirates", "AR": "Argentina", "AU": "Australia",
+    "BD": "Bangladesh", "BE": "Belgium", "BG": "Bulgaria", "BR": "Brazil", "BT": "Bhutan",
+    "BW": "Botswana", "CA": "Canada", "CH": "Switzerland", "CL": "Chile", "CO": "Colombia",
+    "CZ": "Czech Republic", "DE": "Germany", "DK": "Denmark", "EE": "Estonia", "ES": "Spain",
+    "FI": "Finland", "FR": "France", "GB": "United Kingdom", "GR": "Greece", "HK": "Hong Kong",
+    "HR": "Croatia", "HU": "Hungary", "ID": "Indonesia", "IE": "Ireland", "IL": "Israel",
+    "IS": "Iceland", "IT": "Italy", "JP": "Japan", "KH": "Cambodia", "KR": "Republic of Korea",
+    "LT": "Lithuania", "LV": "Latvia", "MX": "Mexico", "MY": "Malaysia", "NL": "Netherlands",
+    "NO": "Norway", "NZ": "New Zealand", "PE": "Peru", "PL": "Poland", "PT": "Portugal",
+    "RO": "Romania", "RU": "Russian Federation", "SE": "Sweden", "SG": "Singapore",
+    "SI": "Slovenia", "SK": "Slovakia", "SZ": "Eswatini", "TH": "Thailand", "TW": "Taiwan",
+    "UA": "Ukraine", "US": "United States", "ZA": "South Africa"
 }
 
-def lowres(img, target_height=561):
+# --------------------------
+# Utilities
+# --------------------------
+def lowres(img: Image.Image, target_height: int = HEIGHT) -> Image.Image:
     orig_width, orig_height = img.size
     aspect_ratio = orig_width / orig_height
-    new_width = int(target_height * aspect_ratio)
+    new_width = int(round(target_height * aspect_ratio))
     resized_img = img.resize((new_width, target_height), Image.Resampling.LANCZOS)
     return resized_img
 
-# --- Embedding extraction (pure Torch) ---
-def get_embeddings(model, dataloader, device):
+preprocess = transforms.Compose([
+    transforms.ToTensor(),  # to [0,1]
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225])
+])
+
+def clean_state_dict_keys(state_dict: dict) -> dict:
+    new_sd = {}
+    for k, v in state_dict.items():
+        new_key = k
+        if k.startswith("module."):
+            new_key = k[len("module."):]
+        new_sd[new_key] = v
+    return new_sd
+
+class ResNet50FeatureExtractor(nn.Module):
+
+    def __init__(self, num_classes=56):
+        super().__init__()
+        # Using the standard torchvision ResNet50 backbone
+        backbone = models.resnet50(weights=None)
+        num_ftrs = backbone.fc.in_features
+        backbone.fc = nn.Linear(num_ftrs, num_classes)
+        self.backbone = backbone
+
+    def forward(self, x, return_features=False):
+        # replicate torchvision forward until avgpool to extract features
+        x = self.backbone.conv1(x)
+        x = self.backbone.bn1(x)
+        x = self.backbone.relu(x)
+        x = self.backbone.maxpool(x)
+
+        x = self.backbone.layer1(x)
+        x = self.backbone.layer2(x)
+        x = self.backbone.layer3(x)
+        x = self.backbone.layer4(x)
+
+        pooled = self.backbone.avgpool(x)
+        feats = torch.flatten(pooled, 1)  # shape (B, num_ftrs)
+        logits = self.backbone.fc(feats)
+
+        return feats if return_features else logits
+
+def load_model_checkpoint(path: str, device: torch.device, num_classes=56):
+    model = ResNet50FeatureExtractor(num_classes=num_classes)
     model.to(device)
-    all_embs, all_labels = [], []
-    with torch.no_grad():
-        for batch in tqdm(dataloader, desc="Extracting embeddings"):
-            pixel_values = batch['pixel_values'].to(device)
-            labels = batch['labels']
-            feats = model(pixel_values, return_features=True)
-            all_embs.append(feats.cpu())
-            all_labels.append(labels)
-    return torch.cat(all_embs).numpy(), torch.cat(all_labels).numpy()
 
-# --- Single image inference ---
-def extract_sample_embedding(model, image_path, device):
-    sample_raw = lowres(Image.open(image_path).convert('RGB'))
-    sample_tensor = preprocess(sample_raw).unsqueeze(0).to(device)
-    with torch.no_grad():
-        sample_emb = model(sample_tensor, return_features=True).cpu().numpy()
-    return sample_emb, sample_raw
+    if not Path(path).exists():
+        raise FileNotFoundError(f"Checkpoint not found: {path}")
 
-# --- UMAP + visualization ---
-def project_and_plot(centroids, sample_emb, classes, id2label_map, iso_alpha2_to_country):
-    all_points = np.concatenate([centroids, sample_emb], axis=0)
+    checkpoint = torch.load(path, map_location="cpu")
+    state_dict = checkpoint["state_dict"] if isinstance(checkpoint, dict) and "state_dict" in checkpoint else checkpoint
+    state_dict = clean_state_dict_keys(state_dict)
+
+    # 🔧 Fix key prefix mismatch: add "backbone." if not present
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        if not k.startswith("backbone."):
+            new_state_dict["backbone." + k] = v
+        else:
+            new_state_dict[k] = v
+    state_dict = new_state_dict
+
+    try:
+        model.load_state_dict(state_dict, strict=True)
+        print("✅ Checkpoint loaded successfully (strict mode).")
+    except Exception as e:
+        print("⚠️ Strict load_state_dict failed:", e)
+        res = model.load_state_dict(state_dict, strict=False)
+        print("Non-strict load_state_dict result:", res)
+
+    model.to(device)
+    model.eval()
+    return model
+
+
+# --------------------------
+# Single-image embedding extraction
+# --------------------------
+def extract_sample_embedding(model: nn.Module, image_path: str, device: torch.device):
+    """
+    Returns (embedding: np.ndarray shape (1, D), resized_pil_image)
+    """
+    img = Image.open(image_path).convert("RGB")
+    img_resized = lowres(img, target_height=HEIGHT)
+    tensor = preprocess(img_resized).unsqueeze(0).to(device)  # shape (1,3,H,W)
+
+    with torch.no_grad():
+        feats = model(tensor, return_features=True)  # Tensor (1, D)
+    return feats.cpu().numpy(), img_resized
+
+# --------------------------
+# UMAP plotting helper
+# --------------------------
+def project_and_plot(embs: np.ndarray, sample_emb: np.ndarray,
+                     id2label_map: dict = None, iso_alpha2_to_country: dict = None,
+                     show_text=True):
+    
+    embeddings = embs.squeeze()
+    df = pd.DataFrame(embeddings)
+    df['label'] = labels
+    centroids = df.groupby('label').mean().to_numpy()
+    classes = df['label'].unique()
+    
+    if centroids is None or centroids.size == 0:
+        all_points = sample_emb
+    else:
+        all_points = np.concatenate([centroids, sample_emb], axis=0)
+
     scaled = StandardScaler().fit_transform(all_points)
     umap_2d = UMAP(n_components=2, random_state=42).fit_transform(scaled)
-    plane_centroids = umap_2d[:-1]
-    plane_sample = umap_2d[-1]
-    
-    plt.figure(figsize=(16, 8))
-    plt.scatter(plane_centroids[:, 0], plane_centroids[:, 1], c=classes, cmap='tab20', s=5)
-    for i, lbl in enumerate(classes):
-        country = id2label_map.get(int(lbl), str(lbl))
-        plt.text(plane_centroids[i, 0], plane_centroids[i, 1], country, fontsize=10, ha='center', va='center')
-    plt.scatter(plane_sample[0], plane_sample[1], c='red', s=80, edgecolor='black', marker='X')
+    if centroids is None or centroids.size == 0:
+        plane_centroids = np.zeros((0, 2))
+        plane_sample = umap_2d[0]
+    else:
+        plane_centroids = umap_2d[:-1]
+        plane_sample = umap_2d[-1]
+
+    plt.figure(figsize=(12, 8))
+    if plane_centroids.shape[0] > 0:
+        # color by class if provided, else single color
+        if classes is not None:
+            plt.scatter(plane_centroids[:, 0], plane_centroids[:, 1], c=classes, cmap='tab20', s=20)
+        else:
+            plt.scatter(plane_centroids[:, 0], plane_centroids[:, 1], s=20)
+    plt.scatter(plane_sample[0], plane_sample[1], c='red', s=120, edgecolor='black', marker='X', label='sample')
+
+    if show_text and plane_centroids.shape[0] > 0 and classes is not None and id2label_map is not None:
+        for i, lbl in enumerate(classes):
+            alpha2 = id2label_map.get(int(lbl), str(lbl))
+            plt.text(plane_centroids[i, 0], plane_centroids[i, 1], alpha2, fontsize=9,
+                     ha='center', va='center')
+
+    plt.legend()
+    plt.title("UMAP projection (centroids + sample)")
     plt.show()
 
-# --- Example run for a single image ---
+
 if __name__ == "__main__":
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    sample_emb, sample_raw = extract_sample_embedding(model, IMG, device)
-    print("Extracted sample embedding:", sample_emb.shape)
+    if os.path.exists(str(Path(__file__).absolute().parent) + "/np_cache/embeddings.npy"):
+        embeddings = np.load("np_cache/embeddings.npy")
+        labels = np.load("np_cache/labels.npy")
+        print("loaded data via save at /np_cache")
+
+    # choose device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Using device:", device)
+
+    # path to your checkpoint - change as needed
+    ckpt_path = "D:/resnet50-finetuned_raw/resnet50_streetview.pth"
+    model = load_model_checkpoint(ckpt_path, device=device, num_classes=56)
+
+    # extract single image embedding
+    sample_emb, sample_img = extract_sample_embedding(model, IMG, device=device)
+    print("Extracted sample embedding shape:", sample_emb.shape)  # should be (1, D), D typically 2048
+
+    # Optional: example plotting with no centroids (just show where sample maps)
+    project_and_plot(embs=embeddings, sample_emb=sample_emb, id2label_map=id2label_map, iso_alpha2_to_country=iso_alpha2_to_country)
