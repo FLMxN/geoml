@@ -8,6 +8,11 @@ from pathlib import Path
 import gc, random, numpy as np
 from tqdm import tqdm
 
+print(f"CPU specs: {torch.backends.cpu.get_cpu_capability()}")
+print(f"cuDNN: {torch.backends.cudnn.is_available()}")
+print(f"CUDA: {torch.backends.cuda.is_built()}")
+torch.backends.cudnn.benchmark = True
+
 class StreetViewDataset(Dataset):
     def __init__(self, hf_dataset, label2id, transform=None):
         self.examples = hf_dataset
@@ -36,9 +41,9 @@ def set_seed(seed):
 if __name__ == "__main__":
     # ---------------- CONFIG ----------------
     DATASET_NAME = "stochastic/random_streetview_images_pano_v0.0.2"
-    OUTPUT_DIR = Path("D:/resnet50-finetuned_raw")
-    BATCH_SIZE = 4       # bigger batch for better GPU utilization
-    NUM_EPOCHS = 3
+    OUTPUT_DIR = Path("/resnet50-finetuned_raw")
+    BATCH_SIZE = 256       # bigger batch for better GPU utilization
+    NUM_EPOCHS = 16      # for 36 hours
     LR = 1e-4
     IMG_CROP = (1017, 0, 2033, 561)  # (left, top, right, bottom)
     SEED = 42
@@ -81,9 +86,9 @@ if __name__ == "__main__":
     val_dataset   = StreetViewDataset(val_hf, label2id, transform)
 
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
-                            num_workers=NUM_WORKERS, pin_memory=True)
+                            num_workers=NUM_WORKERS, pin_memory=True, prefetch_factor=2, persistent_workers=True)
     val_loader   = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False,
-                            num_workers=NUM_WORKERS, pin_memory=True)
+                            num_workers=NUM_WORKERS, pin_memory=True, prefetch_factor=2, persistent_workers=True)
 
     # ---------------- MODEL ----------------
     model = models.resnet50(weights=None)  # random init
@@ -101,7 +106,7 @@ if __name__ == "__main__":
         model.train()
         running_loss = 0.0
         for imgs, labels in tqdm(train_loader):
-            imgs, labels = imgs.to(DEVICE), labels.to(DEVICE)
+            imgs, labels = imgs.to(DEVICE, non_blocking=True), labels.to(DEVICE, non_blocking=True)
             optimizer.zero_grad()
             with torch.autocast(device_type="cuda", enabled=FP16):
                 outputs = model(imgs)
@@ -119,7 +124,7 @@ if __name__ == "__main__":
     total = 0
     with torch.no_grad():
         for imgs, labels in val_loader:
-            imgs, labels = imgs.to(DEVICE), labels.to(DEVICE)
+            imgs, labels = imgs.to(DEVICE, non_blocking=True), labels.to(DEVICE, non_blocking=True)
             outputs = model(imgs)
             preds = outputs.argmax(dim=1)
             correct += (preds == labels).sum().item()
@@ -128,6 +133,5 @@ if __name__ == "__main__":
     print(f"Validation Accuracy: {acc:.4f}")
 
     # ---------------- SAVE ----------------
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    torch.save(model.state_dict(), OUTPUT_DIR / "resnet50_streetview.pth")
-    print(f"Model saved to {OUTPUT_DIR}")
+    torch.save(model.state_dict(), "resnet50_streetview.pth")
+    print(f"Model saved")
