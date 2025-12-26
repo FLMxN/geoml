@@ -13,9 +13,8 @@ from umap import UMAP
 from tqdm import tqdm
 from predictor import predict_image
 from transformers import AutoImageProcessor
-import re
 
-IMG = "pics/image.jpg"   # single image path
+IMG = "pics/image.png"   # single image path
 HEIGHT = 561              # desired target height in pixels
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -201,10 +200,5 @@ if __name__ == "__main__":
 
     sample_emb, sample_img = extract_sample_embedding(model, image_path=IMG, device=device)
     predict_image(resized_img=sample_img, model=model)
-
-    with torch.no_grad():
-        outputs = model(preprocess(sample_img).unsqueeze(0).to(device))
-        preds = outputs.argmax(dim=1)
-    print(f"Prediction via raw: {id2label_map[int(re.findall(r"\[(.*?)\]", str(preds))[0])]}")
 
     # project_and_plot(embs=embeddings, sample_emb=sample_emb, id2label_map=id2label_map, labels=labels)
