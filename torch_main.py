@@ -14,7 +14,7 @@ from tqdm import tqdm
 from predictor import predict_image
 from transformers import AutoImageProcessor
 
-imgs = ["pics/image.png", "pics/Ryazan-03.jpg"]
+imgs = ["pics/t1.png"]
 IMG = "pics/image.png"   # single image path
 HEIGHT = 561              # desired target height in pixels
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -73,7 +73,7 @@ def predict_image(model, samples, processor=None, top_k=3, device=DEVICE):
                 label = model.config.id2label[idx]
             except:
                 label = model.id2label[idx]
-            state_score[label] = state_score[label] + prob/len(samples)
+            state_score[label] = state_score[label] + prob*100/len(samples)
 
         for i, (prob, idx) in enumerate(zip(reg_top_probs, reg_top_indices)):
             try:
