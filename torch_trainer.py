@@ -30,8 +30,8 @@ class StreetViewDataset(Dataset):
         if self.transform:
             img = self.transform(img)
         label = self.label2id[row['country_iso_alpha2']]
-        long = self.label2id[row['longitude']]
-        lat = self.label2id[row['latitude']]
+        long = self.longitude[row['longitude']]
+        lat = self.latitude[row['latitude']]
         return img, label, long, lat
 
 def set_seed(seed):
@@ -46,8 +46,8 @@ if __name__ == "__main__":
     # ---------------- CONFIG ----------------
     DATASET_NAME = "stochastic/random_streetview_images_pano_v0.0.2"
     OUTPUT_DIR = Path("/resnet50-finetuned_raw")
-    BATCH_SIZE = 256       # bigger batch for better GPU utilization
-    NUM_EPOCHS = 16      # for 48 hours
+    BATCH_SIZE = 2       # bigger batch for better GPU utilization
+    NUM_EPOCHS = 1      # for 48 hours
     LR = 1e-4
     IMG_CROP = (1017, 0, 2033, 561)  # (left, top, right, bottom)
     SEED = 42
@@ -73,15 +73,17 @@ if __name__ == "__main__":
 
     # --- Classes
     labels = sorted(list(set(full_dataset["country_iso_alpha2"])))
-    longs = sorted(list(set(full_dataset["longitude"])))
-    lats = sorted(list(set(full_dataset["latitude"])))
+    # longs = sorted(list(set(full_dataset["longitude"])))
+    # lats = sorted(list(set(full_dataset["latitude"])))
 
     label2id = {l: i for i, l in enumerate(labels)}
     id2label = {i: l for l, i in label2id.items()}
-    long = {l: i for i, l in enumerate(longs)}
-    rev_long = {i: l for l, i in long.items()}
-    lat = {l: i for i, l in enumerate(lats)}
-    rev_lat = {i: l for l, i in lat.items()}
+
+    all_longitudes = sorted(list(set(str(x) for x in full_dataset["longitude"])))
+    all_latitudes = sorted(list(set(str(x) for x in full_dataset["latitude"])))
+
+    longitude2id = {l: i for i, l in enumerate(all_longitudes)}
+    latitude2id = {l: i for i, l in enumerate(all_latitudes)}
 
     num_labels = len(labels)
     print(f"Number of iso2alphas: {num_labels}")
@@ -94,8 +96,8 @@ if __name__ == "__main__":
     ])
 
     # --- Datasets + Loaders
-    train_dataset = StreetViewDataset(train_hf, label2id, rev_long, rev_lat, transform)
-    val_dataset   = StreetViewDataset(val_hf, label2id, rev_long, rev_lat, transform)
+    train_dataset = StreetViewDataset(train_hf, label2id, longitude2id, latitude2id, transform)
+    val_dataset   = StreetViewDataset(val_hf, label2id, longitude2id, latitude2id, transform)
 
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
                             num_workers=NUM_WORKERS, pin_memory=True, prefetch_factor=2, persistent_workers=True)
@@ -135,7 +137,7 @@ if __name__ == "__main__":
     correct = 0
     total = 0
     with torch.no_grad():
-        for imgs, labels in val_loader:
+        for imgs, labels, _, _ in val_loader:
             imgs, labels = imgs.to(DEVICE, non_blocking=True), labels.to(DEVICE, non_blocking=True)
             outputs = model(imgs)
             preds = outputs.argmax(dim=1)
