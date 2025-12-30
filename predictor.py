@@ -3,6 +3,7 @@ from transformers import AutoImageProcessor, ResNetForImageClassification, AutoC
 from PIL import Image
 import torch.nn.functional as F
 from torchvision import transforms
+from numpy import mean
 
 HEIGHT = 561
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -66,13 +67,8 @@ def predict_image(model, samples, checkpoint, processor=None, top_k=3, device=DE
         # Extract outputs based on model structure
         if isinstance(outputs, dict):
             logits = outputs.get('logits', outputs.get('classification_logits'))
-            # Look for coordinate outputs
-            if 'longitude' in outputs and 'latitude' in outputs:
-                longitude = outputs['longitude'].cpu().numpy()[0]
-                latitude = outputs['latitude'].cpu().numpy()[0]
-            elif 'coordinates' in outputs:
-                coords = outputs['coordinates'].cpu().numpy()[0]
-                longitude, latitude = coords[0], coords[1]
+            longitude = outputs['longitude'].cpu().numpy()[0]
+            latitude = outputs['latitude'].cpu().numpy()[0]
         elif isinstance(outputs, tuple):
             logits = outputs[0]
             if len(outputs) > 1:
@@ -130,7 +126,7 @@ def predict_image(model, samples, checkpoint, processor=None, top_k=3, device=DE
     key=lambda x: x[1],
     reverse=True))
 
-    print(f"\nCoordinates: {longitude}, {latitude}")
+    print(f"\nCoordinates: {mean(longitudes)}, {mean(latitudes)}")
 
     print(f"\nRegional predictions:")
     print(f"    Europe: {eu_score*100/len(samples):.2f}")

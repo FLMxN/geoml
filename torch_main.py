@@ -14,7 +14,7 @@ from tqdm import tqdm
 from predictor import predict_image
 from transformers import AutoImageProcessor
 
-imgs = ["pics/t3.png"]
+imgs = ["pics/t1.png", "pics/t2.png", "pics/t3.png", "pics/t4.png"]
 HEIGHT = 561              # desired target height in pixels
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -103,23 +103,63 @@ def load_model_checkpoint(path: str, device: torch.device, num_classes=56):
     checkpoint = torch.load(path, map_location="cpu")
     state_dict = checkpoint["state_dict"] if isinstance(checkpoint, dict) and "state_dict" in checkpoint else checkpoint
     state_dict = clean_state_dict_keys(state_dict)
-
-    # 🔧 Fix key prefix mismatch: add "backbone." if not present
+    
+    # print("📊 Checkpoint keys analysis:")
+    # for k in list(state_dict.keys())[:5]:  # Show first 5 keys
+    #     print(f"  {k}: {state_dict[k].shape}")
+    
+    # ✅ CRITICAL: Map checkpoint's fc layer to country_head
+    # Create a new state_dict that matches our model
     new_state_dict = {}
+    
+    # Map all backbone weights (except fc)
     for k, v in state_dict.items():
-        if not k.startswith("resnet."):
+        if k == 'fc.weight' or k == 'fc.bias':
+            # Skip - we'll handle these separately
+            continue
+        elif not k.startswith("resnet."):
             new_state_dict["resnet." + k] = v
         else:
             new_state_dict[k] = v
-    state_dict = new_state_dict
+    
+    # Now map fc weights to country_head
+    if 'fc.weight' in state_dict:
+        fc_weight = state_dict['fc.weight']
+        fc_bias = state_dict['fc.bias']
+        
+        # Check if dimensions match
+        if fc_weight.shape[0] == num_classes and fc_weight.shape[1] == 2048:
+            # Direct mapping: checkpoint fc -> model country_head
+            new_state_dict['country_head.weight'] = fc_weight
+            new_state_dict['country_head.bias'] = fc_bias
+            print(f"✅ Successfully mapped checkpoint fc to country_head")
+            # print(f"   fc.weight shape: {fc_weight.shape} -> country_head.weight")
+            # print(f"   fc.bias shape: {fc_bias.shape} -> country_head.bias")
+        else:
+            print(f"⚠️ Dimension mismatch! Can't map fc weights")
+            # print(f"   Checkpoint fc.weight: {fc_weight.shape}")
+            # print(f"   Model country_head.weight: {model.country_head.weight.shape}")
+    
+    # Initialize coordinate_head with random weights (not in checkpoint)
+    if 'coordinate_head.weight' not in new_state_dict:
+        new_state_dict['coordinate_head.weight'] = model.coordinate_head.weight
+        new_state_dict['coordinate_head.bias'] = model.coordinate_head.bias
+        print(f"📏 Coordinate head initialized randomly")
 
     try:
-        model.load_state_dict(state_dict, strict=True)
+        model.load_state_dict(new_state_dict, strict=True)
         print("✅ Checkpoint loaded successfully (strict mode).")
     except Exception as e:
-        print("⚠️ Strict load_state_dict failed:", e)
-        res = model.load_state_dict(state_dict, strict=False)
-        print("Non-strict load_state_dict result:", res)
+        print("⚠️ Load failed:", e)
+        # Debug: Show missing/unexpected keys
+        model_state = model.state_dict()
+        missing = [k for k in model_state.keys() if k not in new_state_dict]
+        unexpected = [k for k in new_state_dict.keys() if k not in model_state]
+        print(f"Missing in checkpoint: {missing}")
+        print(f"Unexpected in checkpoint: {unexpected}")
+        
+        # Load non-strict
+        model.load_state_dict(new_state_dict, strict=False)
 
     model.to(DEVICE)
     model.eval()
