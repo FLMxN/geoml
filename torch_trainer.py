@@ -14,9 +14,11 @@ print(f"CUDA: {torch.backends.cuda.is_built()}")
 torch.backends.cudnn.benchmark = True
 
 class StreetViewDataset(Dataset):
-    def __init__(self, hf_dataset, label2id, transform=None):
+    def __init__(self, hf_dataset, label2id, longitude, latitude, transform=None):
         self.examples = hf_dataset
         self.label2id = label2id
+        self.longitude = longitude
+        self.latitude = latitude
         self.transform = transform
 
     def __len__(self):
@@ -28,7 +30,9 @@ class StreetViewDataset(Dataset):
         if self.transform:
             img = self.transform(img)
         label = self.label2id[row['country_iso_alpha2']]
-        return img, label
+        long = self.label2id[row['longitude']]
+        lat = self.label2id[row['latitude']]
+        return img, label, long, lat
 
 def set_seed(seed):
     torch.manual_seed(seed)
@@ -69,10 +73,18 @@ if __name__ == "__main__":
 
     # --- Classes
     labels = sorted(list(set(full_dataset["country_iso_alpha2"])))
+    longs = sorted(list(set(full_dataset["longitude"])))
+    lats = sorted(list(set(full_dataset["latitude"])))
+
     label2id = {l: i for i, l in enumerate(labels)}
     id2label = {i: l for l, i in label2id.items()}
+    long = {l: i for i, l in enumerate(longs)}
+    rev_long = {i: l for l, i in long.items()}
+    lat = {l: i for i, l in enumerate(lats)}
+    rev_lat = {i: l for l, i in lat.items()}
+
     num_labels = len(labels)
-    print(f"Number of classes: {num_labels}")
+    print(f"Number of iso2alphas: {num_labels}")
 
     # --- Transforms
     transform = transforms.Compose([
@@ -82,8 +94,8 @@ if __name__ == "__main__":
     ])
 
     # --- Datasets + Loaders
-    train_dataset = StreetViewDataset(train_hf, label2id, transform)
-    val_dataset   = StreetViewDataset(val_hf, label2id, transform)
+    train_dataset = StreetViewDataset(train_hf, label2id, rev_long, rev_lat, transform)
+    val_dataset   = StreetViewDataset(val_hf, label2id, rev_long, rev_lat, transform)
 
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
                             num_workers=NUM_WORKERS, pin_memory=True, prefetch_factor=2, persistent_workers=True)
@@ -105,8 +117,8 @@ if __name__ == "__main__":
     for epoch in range(NUM_EPOCHS):
         model.train()
         running_loss = 0.0
-        for imgs, labels in tqdm(train_loader):
-            imgs, labels = imgs.to(DEVICE, non_blocking=True), labels.to(DEVICE, non_blocking=True)
+        for imgs, labels, longs, lats in tqdm(train_loader):
+            imgs, labels, longs, lats = imgs.to(DEVICE, non_blocking=True), labels.to(DEVICE, non_blocking=True), longs.to(DEVICE, non_blocking=True), lats.to(DEVICE, non_blocking=True)
             optimizer.zero_grad()
             with torch.autocast(device_type="cuda", enabled=FP16):
                 outputs = model(imgs)
@@ -133,5 +145,5 @@ if __name__ == "__main__":
     print(f"Validation Accuracy: {acc:.4f}")
 
     # ---------------- SAVE ----------------
-    torch.save(model.state_dict(), "resnet50_streetview.pth")
+    torch.save(model.state_dict(), "resnet50_streetview_feature.pth")
     print(f"Model saved")
