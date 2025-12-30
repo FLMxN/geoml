@@ -83,14 +83,14 @@ class ResNet50FeatureExtractor(nn.Module):
         self.resnet = models.resnet50(weights=None)
         in_features = self.resnet.fc.in_features
         self.resnet.fc = nn.Identity()
-        
+        self.id2label = id2label_map
         self.country_head = nn.Linear(in_features, num_classes)
         self.coordinate_head = nn.Linear(in_features, 2)  # (longitude, latitude)
     
     def forward(self, x):
         features = self.resnet(x)
         country_logits = self.country_head(features)
-        coordinates = self.coordinate_head(features)  # Regression output
+        coordinates = self.coordinate_head(features)
         return country_logits, coordinates
 
 def load_model_checkpoint(path: str, device: torch.device, num_classes=56):
@@ -107,8 +107,8 @@ def load_model_checkpoint(path: str, device: torch.device, num_classes=56):
     # 🔧 Fix key prefix mismatch: add "backbone." if not present
     new_state_dict = {}
     for k, v in state_dict.items():
-        if not k.startswith("backbone."):
-            new_state_dict["backbone." + k] = v
+        if not k.startswith("resnet."):
+            new_state_dict["resnet." + k] = v
         else:
             new_state_dict[k] = v
     state_dict = new_state_dict
@@ -124,16 +124,6 @@ def load_model_checkpoint(path: str, device: torch.device, num_classes=56):
     model.to(DEVICE)
     model.eval()
     return model, checkpoint
-
-def extract_sample_embedding(model: nn.Module, image_path: str, device: torch.device):
-    img = Image.open(image_path).convert("RGB")
-    img_resized = lowres(img)
-    tensor = preprocess(img_resized).unsqueeze(0).to(device)
-
-    with torch.no_grad():
-        feats = model(tensor)  # Tensor (1, D)
-    return feats.cpu().numpy(), img_resized
-
 
 def project_and_plot(embs: np.ndarray, sample_emb: np.ndarray,
                      id2label_map, labels,
@@ -187,7 +177,7 @@ if __name__ == "__main__":
     sample_imgs = []
 
     for i in enumerate(imgs, 0):
-        emb, img = extract_sample_embedding(model, image_path=imgs[int(i[0])], device=device)
+        img = lowres(Image.open(i[1]).convert("RGB"))
         sample_imgs.append(img)
 
     predict_image(samples=sample_imgs, model=model, checkpoint=ckpt)

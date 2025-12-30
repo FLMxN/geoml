@@ -23,8 +23,6 @@ preprocess = transforms.Compose([
 ])
 
 def predict_image(model, samples, checkpoint, processor=None, top_k=3, device=DEVICE):
-    id2longitude = checkpoint['longitude_mapping']
-    id2latitude = checkpoint['latitude_mapping']
 
     state_score = {
     "AD":0, "AE":0, "AR":0, "AU":0,
@@ -47,6 +45,9 @@ def predict_image(model, samples, checkpoint, processor=None, top_k=3, device=DE
     sa_score = 0
     africa_score = 0
 
+    longitudes = []
+    latitudes = []
+
     for x in enumerate(samples, 0):
         resized_img = samples[x[0]]
         try:
@@ -58,11 +59,36 @@ def predict_image(model, samples, checkpoint, processor=None, top_k=3, device=DE
 
         with torch.no_grad():
             try:
-                country_logits, longitude_logits, latitude_logits = model(**inputs)
+                outputs = model(**inputs)
             except:
-                country_logits, longitude_logits, latitude_logits = model(inputs)
+                outputs = model(inputs)
         
-        probabilities = torch.nn.functional.softmax(country_logits, dim=-1)
+        # Extract outputs based on model structure
+        if isinstance(outputs, dict):
+            logits = outputs.get('logits', outputs.get('classification_logits'))
+            # Look for coordinate outputs
+            if 'longitude' in outputs and 'latitude' in outputs:
+                longitude = outputs['longitude'].cpu().numpy()[0]
+                latitude = outputs['latitude'].cpu().numpy()[0]
+            elif 'coordinates' in outputs:
+                coords = outputs['coordinates'].cpu().numpy()[0]
+                longitude, latitude = coords[0], coords[1]
+        elif isinstance(outputs, tuple):
+            logits = outputs[0]
+            if len(outputs) > 1:
+                # Assuming outputs[1] contains coordinates
+                coords = outputs[1].cpu().numpy()[0]
+                if len(coords) == 2:
+                    longitude, latitude = coords[0], coords[1]
+        else:
+            logits = outputs
+        
+        # Store coordinates if found
+        if 'longitude' in locals() and 'latitude' in locals():
+            longitudes.append(longitude)
+            latitudes.append(latitude)
+        
+        probabilities = torch.nn.functional.softmax(logits, dim=-1)
 
         top_probs, top_indices = torch.topk(probabilities, top_k)
         top_probs = top_probs.cpu().numpy()[0]
@@ -99,23 +125,12 @@ def predict_image(model, samples, checkpoint, processor=None, top_k=3, device=DE
                 case country if country in regions["Africa"]:
                     africa_score = africa_score + prob
 
-        longitude_probs = torch.softmax(longitude_logits, dim=-1)
-        latitude_probs = torch.softmax(latitude_logits, dim=-1)
-
-        top_long_idx = torch.argmax(longitude_probs).item()
-        top_lat_idx = torch.argmax(latitude_probs).item()
-
-        longitude = id2longitude[top_long_idx]  # This will be a string
-        latitude = id2latitude[top_lat_idx]      # This will be a string
-
-
     preds = dict(sorted(
     ((k, float(v)) for k, v in state_score.items() if v != 0),
     key=lambda x: x[1],
     reverse=True))
 
-    print(f"\nLongitude: {longitude}")
-    print(f"\nLatitude: {latitude}")
+    print(f"\nCoordinates: {longitude}, {latitude}")
 
     print(f"\nRegional predictions:")
     print(f"    Europe: {eu_score*100/len(samples):.2f}")
