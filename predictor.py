@@ -81,6 +81,7 @@ def predict_image(model, samples, checkpoint, processor=None, top_k=3, device=DE
         
         # Store coordinates if found
         if 'longitude' in locals() and 'latitude' in locals():
+            print(f"\nCoordinates of {x}: {longitude}, {latitude}")
             longitudes.append(longitude)
             latitudes.append(latitude)
         

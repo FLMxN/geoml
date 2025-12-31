@@ -14,7 +14,7 @@ from tqdm import tqdm
 from predictor import predict_image
 from transformers import AutoImageProcessor
 
-imgs = ["pics/t1.png", "pics/t2.png", "pics/t3.png", "pics/t4.png"]
+imgs = ["pics/zahodryazan.jpg", "pics/t1.png", "pics/t2.png", "pics/t3.png", "pics/t4.png", "pics/ryazan21080-371224838.jpg", "pics/ryazan-russia-city-view-3628679470.jpg", "pics/Ryazan-03.jpg", "pics/5df12e8f9e3d0-5140-sobornaja-ploschad.jpeg"]
 HEIGHT = 561              # desired target height in pixels
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -95,73 +95,85 @@ class ResNet50FeatureExtractor(nn.Module):
 
 def load_model_checkpoint(path: str, device: torch.device, num_classes=56):
     model = ResNet50FeatureExtractor(num_classes=num_classes)
-    model.to(device)
-
+    
     if not Path(path).exists():
         raise FileNotFoundError(f"Checkpoint not found: {path}")
 
+    # Load checkpoint
     checkpoint = torch.load(path, map_location="cpu")
-    state_dict = checkpoint["state_dict"] if isinstance(checkpoint, dict) and "state_dict" in checkpoint else checkpoint
+    
+    print("📊 Checkpoint structure:")
+    if isinstance(checkpoint, dict):
+        for k, v in checkpoint.items():
+            if hasattr(v, 'shape'):
+                print(f"  {k}: shape {v.shape}")
+            elif isinstance(v, dict):
+                print(f"  {k}: dict with {len(v)} keys")
+            else:
+                print(f"  {k}: {type(v).__name__} = {v}")
+    
+    # Extract the actual model weights
+    if isinstance(checkpoint, dict):
+        if 'model_state_dict' in checkpoint:
+            state_dict = checkpoint['model_state_dict']
+            print("\n✅ Extracted model_state_dict from checkpoint")
+        elif 'state_dict' in checkpoint:
+            state_dict = checkpoint['state_dict']
+            print("\n✅ Extracted state_dict from checkpoint")
+        else:
+            # If the checkpoint itself is the state_dict
+            state_dict = checkpoint
+            print("\n✅ Checkpoint is already the state_dict")
+    else:
+        state_dict = checkpoint
+    
+    # Clean keys (remove 'module.' prefix if present)
     state_dict = clean_state_dict_keys(state_dict)
     
-    # print("📊 Checkpoint keys analysis:")
-    # for k in list(state_dict.keys())[:5]:  # Show first 5 keys
-    #     print(f"  {k}: {state_dict[k].shape}")
-    
-    # ✅ CRITICAL: Map checkpoint's fc layer to country_head
-    # Create a new state_dict that matches our model
-    new_state_dict = {}
-    
-    # Map all backbone weights (except fc)
-    for k, v in state_dict.items():
-        if k == 'fc.weight' or k == 'fc.bias':
-            # Skip - we'll handle these separately
-            continue
-        elif not k.startswith("resnet."):
-            new_state_dict["resnet." + k] = v
+    # Debug: Show first few keys
+    print("\n📋 State dict keys (first 10):")
+    for i, (k, v) in enumerate(list(state_dict.items())[:10]):
+        if hasattr(v, 'shape'):
+            print(f"  {k}: shape {v.shape}")
         else:
-            new_state_dict[k] = v
+            print(f"  {k}: {type(v)}")
     
-    # Now map fc weights to country_head
-    if 'fc.weight' in state_dict:
-        fc_weight = state_dict['fc.weight']
-        fc_bias = state_dict['fc.bias']
-        
-        # Check if dimensions match
-        if fc_weight.shape[0] == num_classes and fc_weight.shape[1] == 2048:
-            # Direct mapping: checkpoint fc -> model country_head
-            new_state_dict['country_head.weight'] = fc_weight
-            new_state_dict['country_head.bias'] = fc_bias
-            print(f"✅ Successfully mapped checkpoint fc to country_head")
-            # print(f"   fc.weight shape: {fc_weight.shape} -> country_head.weight")
-            # print(f"   fc.bias shape: {fc_bias.shape} -> country_head.bias")
-        else:
-            print(f"⚠️ Dimension mismatch! Can't map fc weights")
-            # print(f"   Checkpoint fc.weight: {fc_weight.shape}")
-            # print(f"   Model country_head.weight: {model.country_head.weight.shape}")
+    # Check if we have the new multi-task structure
+    has_country_head = any('country_head' in k for k in state_dict.keys())
+    has_coordinate_head = any('coordinate_head' in k for k in state_dict.keys())
     
-    # Initialize coordinate_head with random weights (not in checkpoint)
-    if 'coordinate_head.weight' not in new_state_dict:
-        new_state_dict['coordinate_head.weight'] = model.coordinate_head.weight
-        new_state_dict['coordinate_head.bias'] = model.coordinate_head.bias
-        print(f"📏 Coordinate head initialized randomly")
-
+    if has_country_head and has_coordinate_head:
+        print("\n✅ Multi-task checkpoint detected (both heads present)")
+    elif has_country_head:
+        print("\n⚠️ Only country_head found, coordinate_head missing")
+    else:
+        print("\n⚠️ Old checkpoint detected (no custom heads)")
+    
+    # Load the weights
     try:
-        model.load_state_dict(new_state_dict, strict=True)
-        print("✅ Checkpoint loaded successfully (strict mode).")
+        model.load_state_dict(state_dict, strict=True)
+        print("✅ Checkpoint loaded successfully (strict mode)")
     except Exception as e:
-        print("⚠️ Load failed:", e)
-        # Debug: Show missing/unexpected keys
-        model_state = model.state_dict()
-        missing = [k for k in model_state.keys() if k not in new_state_dict]
-        unexpected = [k for k in new_state_dict.keys() if k not in model_state]
-        print(f"Missing in checkpoint: {missing}")
-        print(f"Unexpected in checkpoint: {unexpected}")
+        print(f"⚠️ Strict load failed: {e}")
+        print("Trying non-strict load...")
+        missing, unexpected = model.load_state_dict(state_dict, strict=False)
         
-        # Load non-strict
-        model.load_state_dict(new_state_dict, strict=False)
-
-    model.to(DEVICE)
+        print(f"\n📊 Load summary:")
+        print(f"  Missing keys: {len(missing)}")
+        if missing:
+            for m in missing[:5]:  # Show first 5
+                print(f"    - {m}")
+            if len(missing) > 5:
+                print(f"    ... and {len(missing)-5} more")
+        
+        print(f"\n  Unexpected keys: {len(unexpected)}")
+        if unexpected:
+            for u in unexpected[:5]:  # Show first 5
+                print(f"    - {u}")
+            if len(unexpected) > 5:
+                print(f"    ... and {len(unexpected)-5} more")
+    
+    model.to(device)
     model.eval()
     return model, checkpoint
 
@@ -202,6 +214,36 @@ def project_and_plot(embs: np.ndarray, sample_emb: np.ndarray,
     plt.title("UMAP projection (centroids + sample)")
     plt.show()
 
+def diagnose_model(model, checkpoint):
+    print("\n🔍 MODEL DIAGNOSTICS 🔍")
+    
+    # 1. Check model structure
+    print(f"Country head shape: {model.country_head.weight.shape}")
+    print(f"Coordinate head shape: {model.coordinate_head.weight.shape}")
+    
+    # 2. Check coordinate head outputs
+    test_input = torch.randn(1, 2048).to(DEVICE)  # Random features
+    coords = model.coordinate_head(test_input)
+    print(f"\nRandom feature -> Coordinates: {coords}")
+    
+    # 3. Check if tanh is applied correctly
+    print(f"After tanh: {torch.tanh(coords)}")
+    
+    # 4. What happens with all-zero features?
+    zero_input = torch.zeros(1, 2048).to(DEVICE)
+    zero_coords = model.coordinate_head(zero_input)
+    print(f"\nZero features -> Coordinates: {zero_coords}")
+    print(f"Zero features -> After tanh: {torch.tanh(zero_coords)}")
+    print(f"Denormalized: Longitude={torch.tanh(zero_coords)[0,0].item()*180:.1f}°, "
+          f"Latitude={torch.tanh(zero_coords)[0,1].item()*90:.1f}°")
+    
+    # 5. Check checkpoint info
+    if 'val_acc' in checkpoint:
+        print(f"\nCheckpoint validation accuracy: {checkpoint['val_acc']*100:.2f}%")
+    if 'val_coord_loss' in checkpoint:
+        print(f"Checkpoint coordinate loss: {checkpoint['val_coord_loss']:.4f}")
+
+# Call it in your main
 
 if __name__ == "__main__":
     if os.path.exists(str(Path(__file__).absolute().parent) + "/np_cache/embeddings.npy"):
@@ -212,7 +254,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
-    ckpt_path = "E://resnet50_streetview_feature.pth"
+    ckpt_path = "E://resnet50_streetview_multi_task.pth"
     model, ckpt = load_model_checkpoint(ckpt_path, device=device, num_classes=56)
     sample_imgs = []
 
@@ -222,4 +264,9 @@ if __name__ == "__main__":
 
     predict_image(samples=sample_imgs, model=model, checkpoint=ckpt)
 
+    diagnose_model(model, ckpt)
+
+
     # project_and_plot(embs=embeddings, sample_emb=sample_emb, id2label_map=id2label_map, labels=labels)
+
+    
