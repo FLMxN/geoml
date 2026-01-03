@@ -90,16 +90,16 @@ class ResNet50MultiTask(nn.Module):
 if __name__ == "__main__":
     # ---------------- CONFIG ----------------
     DATASET_NAME = "stochastic/random_streetview_images_pano_v0.0.2"
-    BATCH_SIZE = 32                     # CRITICAL: Increased from 2
-    NUM_EPOCHS = 64                    # CRITICAL: Increased from 1
-    LR = 3e-4                           # Slightly higher learning rate
-    GRADIENT_ACCUMULATION_STEPS = 1     # Effective batch size = 64
+    BATCH_SIZE = 32                    
+    NUM_EPOCHS = 64                    
+    LR = 3e-4                           
+    GRADIENT_ACCUMULATION_STEPS = 1     
     IMG_CROP = (1017, 0, 2033, 561)
     SEED = 42
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     NUM_WORKERS = 4
     
-    COUNTRY_LOSS_WEIGHT = 1.5
+    COUNTRY_LOSS_WEIGHT = 2
     COORD_LOSS_WEIGHT = 0.5
     
     FP16 = True
@@ -220,9 +220,9 @@ if __name__ == "__main__":
     # Cosine annealing with warm restarts
     scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
         optimizer, 
-        T_0=8,  # Restart every 10 epochs
-        T_mult=2,
-        eta_min=1e-6
+        T_0=64,
+        T_mult=1,
+        eta_min=1e-7
     )
     
     scaler = torch.GradScaler(enabled=FP16)
