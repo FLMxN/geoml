@@ -159,7 +159,7 @@ if __name__ == "__main__":
     # Enhanced transforms with more augmentations
     transform = transforms.Compose([
         transforms.RandomHorizontalFlip(p=0.5),
-        transforms.ColorJitter(brightness=0.33, contrast=0.33, saturation=0.33, hue=0.1),
+        transforms.ColorJitter(brightness=0.25, contrast=0.25, saturation=0.25, hue=0.1),
         transforms.RandomRotation(degrees=5),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
