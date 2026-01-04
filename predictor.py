@@ -23,7 +23,7 @@ preprocess = transforms.Compose([
                          std=[0.229, 0.224, 0.225])
 ])
 
-def predict_image(model, samples, checkpoint, processor=None, top_k=3, device=DEVICE):
+def predict_image(model, samples, checkpoint, processor=None, top_k=5, device=DEVICE):
 
     state_score = {
     "AD":0, "AE":0, "AR":0, "AU":0,
@@ -140,5 +140,3 @@ def predict_image(model, samples, checkpoint, processor=None, top_k=3, device=DE
     print(f"\nParticular predictions:")
     for y in preds:
         print(f"    {y}: {preds[y]:.2f}")
-
-    

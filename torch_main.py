@@ -13,8 +13,18 @@ from umap import UMAP
 from tqdm import tqdm
 from predictor import predict_image
 from transformers import AutoImageProcessor
+from datasets import load_dataset
 
-imgs = ["visualizer/features_52.png"]
+# full_dataset = load_dataset("stochastic/random_streetview_images_pano_v0.0.2", 
+#                           split="train", 
+#                           streaming=True)
+# imgs = []
+# for i, example in enumerate(full_dataset):
+#     if i < 6969:
+#         print(i)
+#         imgs.append(example["image"])
+
+imgs = ["pics/image.png"]
 # imgs = ["pics/t1.png", "pics/t2.png", "pics/t3.png", "pics/t4.png", "pics/ryazan21080-371224838.jpg", "pics/Ryazan-03.jpg", "pics/5df12e8f9e3d0-5140-sobornaja-ploschad.jpeg"]
 HEIGHT = 561
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -53,9 +63,6 @@ iso_alpha2_to_country = {
     "UA": "Ukraine", "US": "United States", "ZA": "South Africa"
 }
 
-# --------------------------
-# Utilities
-# --------------------------
 def lowres(image: Image.Image, new_height: int = HEIGHT) -> Image.Image:
     orig_width, orig_height = image.size
     aspect_ratio = orig_width / orig_height
@@ -261,9 +268,11 @@ if __name__ == "__main__":
         img = lowres(Image.open(i[1]).convert("RGB"))
         sample_imgs.append(img)
 
+    # for i in enumerate(imgs, 0):
+    #     img = lowres(i[1]).convert("RGB")
+    #     sample_imgs.append(img)
+
     predict_image(samples=sample_imgs, model=model, checkpoint=ckpt)
 
     # diagnose_model(model, ckpt)
     # project_and_plot(embs=embeddings, sample_emb=np.array(img), id2label_map=id2label_map, labels=labels)
-
-    
