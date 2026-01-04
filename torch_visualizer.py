@@ -15,7 +15,9 @@ warnings.filterwarnings('ignore')
 
 #-------------------------------- CONFIG -----------------------------------
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-do_loop = False
+do_loop = 0
+target1_idx = 33
+target2_idx = 35
 #---------------------------------------------------------------------------
 
 ckpt_path = "E://resnet50_streetview_imagenet1k.pth"
@@ -50,50 +52,57 @@ def exact_match_percentage(tensor1, tensor2):
     percentage = (equal_elements / total_elements) * 100
     return percentage
 
-target1_idx = 52
-target2_idx = 54
+def get_visual(targets):
+    for target_idx in targets:
+        for step in range(15000):
+            optimizer.zero_grad()
+            img_norm = (img_raw - mean) / std
+
+            logits, _ = model(img_norm)
+            target_logit = logits[0, target_idx]
+
+            color_loss = torch.mean((img_raw.mean(dim=(2,3)) - mean.squeeze())**2)
+            loss = -target_logit + 1e-2 * tv_loss(img_raw) + 1e-1 * color_loss
+
+            loss.backward()
+            optimizer.step()
+
+            with torch.no_grad():
+                img_raw.clamp_(0, 1)
+
+            if step % 10 == 0:
+                print(f"step {step}, logit {target_logit.item():.2f}")
+                with torch.no_grad():
+                    img_raw.data = TF.gaussian_blur(
+                            img_raw.data,
+                            kernel_size=[5, 5],
+                            sigma=[0.5, 0.5]
+                        )
+            
+        result = img_raw.detach().cpu().squeeze().permute(1,2,0).numpy()
+        result = np.clip(result, 0.0, 1.0)
+        vis = (result - result.min()) / (result.max() - result.min() + 1e-8)
+        vis = (vis * 255).astype(np.uint8)
+        Image.fromarray(vis).save(f"visualizer/features_{target_idx}.png")
+
 try:
     pic1 = transform(Image.open(f'visualizer/features_{target1_idx}.png'))
 except:
-    target_idx = target1_idx
-    do_loop = True
+    do_loop += 1
 try:
     pic2 = transform(Image.open(f'visualizer/features_{target2_idx}.png'))
 except:
-    target_idx = target2_idx
-    do_loop = True
+    do_loop += 2
 
-if do_loop:
-    for step in range(15000):
-        optimizer.zero_grad()
-        img_norm = (img_raw - mean) / std
-
-        logits, _ = model(img_norm)
-        target_logit = logits[0, target_idx]
-
-        color_loss = torch.mean((img_raw.mean(dim=(2,3)) - mean.squeeze())**2)
-        loss = -target_logit + 1e-2 * tv_loss(img_raw) + 1e-1 * color_loss
-
-        loss.backward()
-        optimizer.step()
-
-        with torch.no_grad():
-            img_raw.clamp_(0, 1)
-
-        if step % 10 == 0:
-            print(f"step {step}, logit {target_logit.item():.2f}")
-            with torch.no_grad():
-                img_raw.data = TF.gaussian_blur(
-                    img_raw.data,
-                    kernel_size=[5, 5],
-                    sigma=[0.5, 0.5]
-                )
-
-    result = img_raw.detach().cpu().squeeze().permute(1,2,0).numpy()
-    result = np.clip(result, 0.0, 1.0)
-    vis = (result - result.min()) / (result.max() - result.min() + 1e-8)
-    vis = (vis * 255).astype(np.uint8)
-    Image.fromarray(vis).save(f"visualizer/features_{target_idx}.png")
+match do_loop:
+    case 1:
+        get_visual(target1_idx)
+    case 2:
+        get_visual(target2_idx)
+    case 3:
+        get_visual([target1_idx, target2_idx])
+    case _: 
+        pass
 
 pic1 = transform(Image.open(f'visualizer/features_{target1_idx}.png'))
 pic2 = transform(Image.open(f'visualizer/features_{target2_idx}.png'))
