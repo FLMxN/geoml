@@ -23,7 +23,7 @@ preprocess = transforms.Compose([
                          std=[0.229, 0.224, 0.225])
 ])
 
-def predict_image(model, samples, checkpoint, processor=None, top_k=3, device=DEVICE):
+def predict_image(model, samples, top_k=5, device=DEVICE):
 
     state_score = {
     "AD":0, "AE":0, "AR":0, "AU":0,
@@ -123,7 +123,7 @@ def predict_image(model, samples, checkpoint, processor=None, top_k=3, device=DE
     key=lambda x: x[1],
     reverse=True))
 
-    print(f"\nCoordinates: {mean(longitudes)}, {mean(latitudes)}")
+    print(f"\nCoordinates: {mean(longitudes)}, {mean(latitudes)}") #fuck this shit
 
     print(f"\nRegional predictions:")
     print(f"    Europe: {eu_score*100/len(samples):.2f}")

@@ -15,17 +15,21 @@ from predictor import predict_image
 from transformers import AutoImageProcessor
 from datasets import load_dataset
 
+
+
 # full_dataset = load_dataset("stochastic/random_streetview_images_pano_v0.0.2", 
 #                           split="train", 
 #                           streaming=True)
 # imgs = []
 # for i, example in enumerate(full_dataset):
-#     if i < 6969:
+#     if i < 1234:
 #         print(i)
 #         imgs.append(example["image"])
 
-# imgs = ["visualizer/features_33.png"]
-imgs = ["pics/t1.png", "pics/t2.png", "pics/t3.png", "pics/t4.png", "pics/ryazan21080-371224838.jpg", "pics/Ryazan-03.jpg", "pics/5df12e8f9e3d0-5140-sobornaja-ploschad.jpeg"]
+
+
+imgs = ["pics/image.png"]
+# imgs = ["pics/image.png", "pics/zahodryazan.jpg", "pics/ryazan-russia-city-view-3628679470.jpg", "pics/t1.png", "pics/t2.png", "pics/t3.png", "pics/t4.png", "pics/ryazan21080-371224838.jpg", "pics/Ryazan-03.jpg", "pics/5df12e8f9e3d0-5140-sobornaja-ploschad.jpeg"]
 HEIGHT = 561
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -70,7 +74,7 @@ def crop_resize(image: Image.Image, size = (HEIGHT, HEIGHT)) -> Image.Image:
     out = image.resize((new_w, new_h), Image.BICUBIC)
     return out
 
-def stretch_crop(image: Image.Image, size = (round(HEIGHT*(16/9)), HEIGHT)) -> Image.Image:
+def stretch_resize(image: Image.Image, size = (round(HEIGHT*(16/9)), HEIGHT)) -> Image.Image:
     res = image.resize(size)
     return res
  
@@ -269,15 +273,18 @@ if __name__ == "__main__":
     sample_imgs = []
 
     for i in enumerate(imgs, 0):
-        img = crop_resize(Image.open(i[1]).convert("RGB"))
-        img.show()
-        sample_imgs.append(img)
+        img_crop = crop_resize(Image.open(i[1]).convert("RGB"))
+        img_stretch = stretch_resize(Image.open(i[1]).convert("RGB"))
+        sample_imgs.append(img_crop)
+        sample_imgs.append(img_stretch)
+        # img_stretch.show()
+        # img_crop.show()
 
     # for i in enumerate(imgs, 0):
     #     img = resize(i[1]).convert("RGB")
     #     sample_imgs.append(img)
 
-    predict_image(samples=sample_imgs, model=model, checkpoint=ckpt)
+    predict_image(samples=sample_imgs, model=model)
 
     # diagnose_model(model, ckpt)
     # project_and_plot(embs=embeddings, sample_emb=np.array(img), id2label_map=id2label_map, labels=labels)
