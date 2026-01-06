@@ -13,10 +13,24 @@ from umap import UMAP
 from tqdm import tqdm
 from predictor import predict_image
 from transformers import AutoImageProcessor
+from datasets import load_dataset
+
+
+
+# full_dataset = load_dataset("stochastic/random_streetview_images_pano_v0.0.2", 
+#                           split="train", 
+#                           streaming=True)
+# imgs = []
+# for i, example in enumerate(full_dataset):
+#     if i < 1234:
+#         print(i)
+#         imgs.append(example["image"])
+
+
 
 imgs = ["pics/t1.png"]
-IMG = "pics/image.png"   # single image path
-HEIGHT = 561              # desired target height in pixels
+# imgs = ["pics/image.png", "pics/zahodryazan.jpg", "pics/ryazan-russia-city-view-3628679470.jpg", "pics/t1.png", "pics/t2.png", "pics/t3.png", "pics/t4.png", "pics/ryazan21080-371224838.jpg", "pics/Ryazan-03.jpg", "pics/5df12e8f9e3d0-5140-sobornaja-ploschad.jpeg"]
+HEIGHT = 561
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 np.random.seed(42)
@@ -53,16 +67,17 @@ iso_alpha2_to_country = {
     "UA": "Ukraine", "US": "United States", "ZA": "South Africa"
 }
 
-# --------------------------
-# Utilities
-# --------------------------
-def lowres(image: Image.Image, new_height: int = HEIGHT) -> Image.Image:
-    orig_width, orig_height = image.size
-    aspect_ratio = orig_width / orig_height
-    new_width = int(round(new_height * aspect_ratio))
-    resized_img = image.crop((int((orig_width-new_width)/2), 0, int((new_width/2)+new_width), 561))
-    return resized_img
+def crop_resize(image: Image.Image, size = (HEIGHT, HEIGHT)) -> Image.Image:
+    w, h = image.size
+    new_h = HEIGHT
+    new_w = int(w * (new_h / h))
+    out = image.resize((new_w, new_h), Image.BICUBIC)
+    return out
 
+def stretch_resize(image: Image.Image, size = (round(HEIGHT*(16/9)), HEIGHT)) -> Image.Image:
+    res = image.resize(size)
+    return res
+ 
 preprocess = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406],
@@ -79,113 +94,133 @@ def clean_state_dict_keys(state_dict: dict) -> dict:
     return new_sd
 
 class ResNet50FeatureExtractor(nn.Module):
-
-    def __init__(self, num_classes=56):
+    def __init__(self, num_classes):
         super().__init__()
-        # Using the standard torchvision ResNet50 backbone
-        backbone = models.resnet50(weights=None)
-        num_ftrs = backbone.fc.in_features
-        backbone.fc = nn.Linear(num_ftrs, num_classes)
-        self.backbone = backbone
+        self.resnet = models.resnet50(weights=None)
+        in_features = self.resnet.fc.in_features
+        self.resnet.fc = nn.Identity()
         self.id2label = id2label_map
-
-    def forward(self, x, return_features=False):
-        # replicate torchvision forward until avgpool to extract features
-        x = self.backbone.conv1(x)
-        x = self.backbone.bn1(x)
-        x = self.backbone.relu(x)
-        x = self.backbone.maxpool(x)
-
-        x = self.backbone.layer1(x)
-        x = self.backbone.layer2(x)
-        x = self.backbone.layer3(x)
-        x = self.backbone.layer4(x)
-
-        pooled = self.backbone.avgpool(x)
-        feats = torch.flatten(pooled, 1)  # shape (B, num_ftrs)
-        logits = self.backbone.fc(feats)
-
-        return feats if return_features else logits
+        self.country_head = nn.Linear(in_features, num_classes)
+        self.coordinate_head = nn.Linear(in_features, 2)  # (longitude, latitude)
+    
+    def forward(self, x):
+        features = self.resnet(x)
+        country_logits = self.country_head(features)
+        coordinates = self.coordinate_head(features)
+        return country_logits, coordinates
 
 def load_model_checkpoint(path: str, device: torch.device, num_classes=56):
     model = ResNet50FeatureExtractor(num_classes=num_classes)
-    model.to(device)
-
+    
     if not Path(path).exists():
         raise FileNotFoundError(f"Checkpoint not found: {path}")
 
+    # Load checkpoint
     checkpoint = torch.load(path, map_location="cpu")
-    state_dict = checkpoint["state_dict"] if isinstance(checkpoint, dict) and "state_dict" in checkpoint else checkpoint
-    state_dict = clean_state_dict_keys(state_dict)
-
-    # 🔧 Fix key prefix mismatch: add "backbone." if not present
-    new_state_dict = {}
-    for k, v in state_dict.items():
-        if not k.startswith("backbone."):
-            new_state_dict["backbone." + k] = v
+    
+    print("📊 Checkpoint structure:")
+    if isinstance(checkpoint, dict):
+        for k, v in checkpoint.items():
+            if hasattr(v, 'shape'):
+                print(f"  {k}: shape {v.shape}")
+            elif isinstance(v, dict):
+                print(f"  {k}: dict with {len(v)} keys")
+            else:
+                print(f"  {k}: {type(v).__name__} = {v}")
+    
+    # Extract the actual model weights
+    if isinstance(checkpoint, dict):
+        if 'model_state_dict' in checkpoint:
+            state_dict = checkpoint['model_state_dict']
+            print("\n✅ Extracted model_state_dict from checkpoint")
+        elif 'state_dict' in checkpoint:
+            state_dict = checkpoint['state_dict']
+            print("\n✅ Extracted state_dict from checkpoint")
         else:
-            new_state_dict[k] = v
-    state_dict = new_state_dict
-
+            # If the checkpoint itself is the state_dict
+            state_dict = checkpoint
+            print("\n✅ Checkpoint is already the state_dict")
+    else:
+        state_dict = checkpoint
+    
+    # Clean keys (remove 'module.' prefix if present)
+    state_dict = clean_state_dict_keys(state_dict)
+    
+    # Debug: Show first few keys
+    print("\n📋 State dict keys (first 10):")
+    for i, (k, v) in enumerate(list(state_dict.items())[:10]):
+        if hasattr(v, 'shape'):
+            print(f"  {k}: shape {v.shape}")
+        else:
+            print(f"  {k}: {type(v)}")
+    
+    # Check if we have the new multi-task structure
+    has_country_head = any('country_head' in k for k in state_dict.keys())
+    has_coordinate_head = any('coordinate_head' in k for k in state_dict.keys())
+    
+    if has_country_head and has_coordinate_head:
+        print("\n✅ Multi-task checkpoint detected (both heads present)")
+    elif has_country_head:
+        print("\n⚠️ Only country_head found, coordinate_head missing")
+    else:
+        print("\n⚠️ Old checkpoint detected (no custom heads)")
+    
+    # Load the weights
     try:
         model.load_state_dict(state_dict, strict=True)
-        print("✅ Checkpoint loaded successfully (strict mode).")
+        print("✅ Checkpoint loaded successfully (strict mode)")
     except Exception as e:
-        print("⚠️ Strict load_state_dict failed:", e)
-        res = model.load_state_dict(state_dict, strict=False)
-        print("Non-strict load_state_dict result:", res)
-
-    model.to(DEVICE)
-    model.eval()
-    return model
-
-def extract_sample_embedding(model: nn.Module, image_path: str, device: torch.device):
-    img = Image.open(image_path).convert("RGB")
-    img_resized = lowres(img)
-    tensor = preprocess(img_resized).unsqueeze(0).to(device)
-
-    with torch.no_grad():
-        feats = model(tensor, return_features=True)  # Tensor (1, D)
-    return feats.cpu().numpy(), img_resized
-
-
-def project_and_plot(embs: np.ndarray, sample_emb: np.ndarray,
-                     id2label_map, labels,
-                     show_text=True):
+        print(f"⚠️ Strict load failed: {e}")
+        print("Trying non-strict load...")
+        missing, unexpected = model.load_state_dict(state_dict, strict=False)
+        
+        print(f"\n📊 Load summary:")
+        print(f"  Missing keys: {len(missing)}")
+        if missing:
+            for m in missing[:5]:  # Show first 5
+                print(f"    - {m}")
+            if len(missing) > 5:
+                print(f"    ... and {len(missing)-5} more")
+        
+        print(f"\n  Unexpected keys: {len(unexpected)}")
+        if unexpected:
+            for u in unexpected[:5]:  # Show first 5
+                print(f"    - {u}")
+            if len(unexpected) > 5:
+                print(f"    ... and {len(unexpected)-5} more")
     
-    embeddings = embs.squeeze()
-    df = pd.DataFrame(embeddings)
-    df['label'] = labels
-    centroids = df.groupby('label').mean().to_numpy()
-    classes = df['label'].unique()
-       
-    all_points = np.concatenate([centroids, sample_emb], axis=0)
+    model.to(device)
+    model.eval()
+    return model, checkpoint
 
-    scaled = StandardScaler().fit_transform(all_points)
-    umap_2d = UMAP(n_components=2, n_neighbors=4, random_state=42).fit_transform(scaled)
-
-    plane_centroids = umap_2d[:-1]
-    plane_sample = umap_2d[-1]
-
-    plt.figure(figsize=(12, 8))
-    if plane_centroids.shape[0] > 0:
-        # color by class if provided, else single color
-        if classes is not None:
-            plt.scatter(plane_centroids[:, 0], plane_centroids[:, 1], c=classes, cmap='tab20', s=20)
-        else:
-            plt.scatter(plane_centroids[:, 0], plane_centroids[:, 1], s=20)
-    plt.scatter(plane_sample[0], plane_sample[1], c='red', s=120, edgecolor='black', marker='X', label='sample')
-
-    if show_text and plane_centroids.shape[0] > 0 and classes is not None and id2label_map is not None:
-        for i, lbl in enumerate(classes):
-            alpha2 = id2label_map.get(int(lbl), str(lbl))
-            plt.text(plane_centroids[i, 0], plane_centroids[i, 1], alpha2, fontsize=12,
-                     ha='center', va='center')
-
-    plt.legend()
-    plt.title("UMAP projection (centroids + sample)")
-    plt.show()
-
+def diagnose_model(model, checkpoint):
+    print("\n🔍 MODEL DIAGNOSTICS 🔍")
+    
+    # 1. Check model structure
+    print(f"Country head shape: {model.country_head.weight.shape}")
+    print(f"Coordinate head shape: {model.coordinate_head.weight.shape}")
+    
+    # 2. Check coordinate head outputs
+    test_input = torch.randn(1, 2048).to(DEVICE)  # Random features
+    coords = model.coordinate_head(test_input)
+    print(f"\nRandom feature -> Coordinates: {coords}")
+    
+    # 3. Check if tanh is applied correctly
+    print(f"After tanh: {torch.tanh(coords)}")
+    
+    # 4. What happens with all-zero features?
+    zero_input = torch.zeros(1, 2048).to(DEVICE)
+    zero_coords = model.coordinate_head(zero_input)
+    print(f"\nZero features -> Coordinates: {zero_coords}")
+    print(f"Zero features -> After tanh: {torch.tanh(zero_coords)}")
+    print(f"Denormalized: Longitude={torch.tanh(zero_coords)[0,0].item()*180:.1f}°, "
+          f"Latitude={torch.tanh(zero_coords)[0,1].item()*90:.1f}°")
+    
+    # 5. Check checkpoint info
+    if 'val_acc' in checkpoint:
+        print(f"\nCheckpoint validation accuracy: {checkpoint['val_acc']*100:.2f}%")
+    if 'val_coord_loss' in checkpoint:
+        print(f"Checkpoint coordinate loss: {checkpoint['val_coord_loss']:.4f}")
 
 if __name__ == "__main__":
     if os.path.exists(str(Path(__file__).absolute().parent) + "/np_cache/embeddings.npy"):
@@ -196,13 +231,22 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
-    ckpt_path = "D:/resnet50-finetuned_raw/resnet50_streetview.pth"
-    model = load_model_checkpoint(ckpt_path, device=device, num_classes=56)
+    ckpt_path = "E://resnet50_streetview_imagenet1k.pth"
+    model, ckpt = load_model_checkpoint(ckpt_path, device=device, num_classes=56)
     sample_imgs = []
 
     for i in enumerate(imgs, 0):
-        emb, img = extract_sample_embedding(model, image_path=imgs[int(i[0])], device=device)
-        sample_imgs.append(img)
+        img_crop = crop_resize(Image.open(i[1]).convert("RGB"))
+        img_stretch = stretch_resize(Image.open(i[1]).convert("RGB"))
+        sample_imgs.append(img_crop)
+        sample_imgs.append(img_stretch)
+        # img_stretch.show()
+        # img_crop.show()
+
+    # for i in enumerate(imgs, 0):
+    #     img = resize(i[1]).convert("RGB")
+    #     sample_imgs.append(img)
+
     predict_image(samples=sample_imgs, model=model)
 
-    # project_and_plot(embs=embeddings, sample_emb=sample_emb, id2label_map=id2label_map, labels=labels)
+    # diagnose_model(model, ckpt)

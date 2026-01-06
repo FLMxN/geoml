@@ -3,6 +3,7 @@ from transformers import AutoImageProcessor, ResNetForImageClassification, AutoC
 from PIL import Image
 import torch.nn.functional as F
 from torchvision import transforms
+from numpy import mean
 
 HEIGHT = 561
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -22,7 +23,8 @@ preprocess = transforms.Compose([
                          std=[0.229, 0.224, 0.225])
 ])
 
-def predict_image(model, samples, processor=None, top_k=3, device=DEVICE):
+def predict_image(model, samples, top_k=5, device=DEVICE):
+
     state_score = {
     "AD":0, "AE":0, "AR":0, "AU":0,
     "BD":0, "BE":0, "BG":0, "BR":0, "BT":0,
@@ -43,20 +45,41 @@ def predict_image(model, samples, processor=None, top_k=3, device=DEVICE):
     na_score = 0
     sa_score = 0
     africa_score = 0
+
+    longitudes = []
+    latitudes = []
+
     for x in enumerate(samples, 0):
         resized_img = samples[x[0]]
-        try:
-            inputs = processor(resized_img, return_tensors='pt')
-            inputs = {k: v.to(device) for k, v in inputs.items()}
-        except:
-            inputs = preprocess(resized_img).unsqueeze(0)
-            inputs = inputs.to(device)
+        inputs = preprocess(resized_img).unsqueeze(0)
+        inputs = inputs.to(device)
 
         with torch.no_grad():
             try:
-                logits = model(**inputs)
+                outputs = model(**inputs)
             except:
-                logits = model(inputs)
+                outputs = model(inputs)
+        
+        # Extract outputs based on model structure
+        if isinstance(outputs, dict):
+            logits = outputs.get('logits', outputs.get('classification_logits'))
+            longitude = outputs['longitude'].cpu().numpy()[0]
+            latitude = outputs['latitude'].cpu().numpy()[0]
+        elif isinstance(outputs, tuple):
+            logits = outputs[0]
+            if len(outputs) > 1:
+                # Assuming outputs[1] contains coordinates
+                coords = outputs[1].cpu().numpy()[0]
+                if len(coords) == 2:
+                    longitude, latitude = coords[0], coords[1]
+        else:
+            logits = outputs
+        
+        # Store coordinates if found
+        if 'longitude' in locals() and 'latitude' in locals():
+            print(f"\nCoordinates of {x}: {longitude}, {latitude}")
+            longitudes.append(longitude)
+            latitudes.append(latitude)
         
         probabilities = torch.nn.functional.softmax(logits, dim=-1)
 
@@ -100,6 +123,8 @@ def predict_image(model, samples, processor=None, top_k=3, device=DEVICE):
     key=lambda x: x[1],
     reverse=True))
 
+    print(f"\nCoordinates: {mean(longitudes)}, {mean(latitudes)}") #fuck this shit
+
     print(f"\nRegional predictions:")
     print(f"    Europe: {eu_score*100/len(samples):.2f}")
     print(f"    Asia: {asia_score*100/len(samples):.2f}")
@@ -111,5 +136,3 @@ def predict_image(model, samples, processor=None, top_k=3, device=DEVICE):
     print(f"\nParticular predictions:")
     for y in preds:
         print(f"    {y}: {preds[y]:.2f}")
-
-    
