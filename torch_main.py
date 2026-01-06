@@ -28,7 +28,7 @@ from datasets import load_dataset
 
 
 
-imgs = ["pics/image.png"]
+imgs = ["pics/t1.png"]
 # imgs = ["pics/image.png", "pics/zahodryazan.jpg", "pics/ryazan-russia-city-view-3628679470.jpg", "pics/t1.png", "pics/t2.png", "pics/t3.png", "pics/t4.png", "pics/ryazan21080-371224838.jpg", "pics/Ryazan-03.jpg", "pics/5df12e8f9e3d0-5140-sobornaja-ploschad.jpeg"]
 HEIGHT = 561
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -193,43 +193,6 @@ def load_model_checkpoint(path: str, device: torch.device, num_classes=56):
     model.eval()
     return model, checkpoint
 
-def project_and_plot(embs: np.ndarray, sample_emb: np.ndarray,
-                     id2label_map, labels,
-                     show_text=True):
-    
-    embeddings = embs.squeeze()
-    df = pd.DataFrame(embeddings)
-    df['label'] = labels
-    centroids = df.groupby('label').mean().to_numpy()
-    classes = df['label'].unique()
-       
-    all_points = np.concatenate([centroids, sample_emb], axis=0)
-
-    scaled = StandardScaler().fit_transform(all_points)
-    umap_2d = UMAP(n_components=2, n_neighbors=4, random_state=42).fit_transform(scaled)
-
-    plane_centroids = umap_2d[:-1]
-    plane_sample = umap_2d[-1]
-
-    plt.figure(figsize=(12, 8))
-    if plane_centroids.shape[0] > 0:
-        # color by class if provided, else single color
-        if classes is not None:
-            plt.scatter(plane_centroids[:, 0], plane_centroids[:, 1], c=classes, cmap='tab20', s=20)
-        else:
-            plt.scatter(plane_centroids[:, 0], plane_centroids[:, 1], s=20)
-    plt.scatter(plane_sample[0], plane_sample[1], c='red', s=120, edgecolor='black', marker='X', label='sample')
-
-    if show_text and plane_centroids.shape[0] > 0 and classes is not None and id2label_map is not None:
-        for i, lbl in enumerate(classes):
-            alpha2 = id2label_map.get(int(lbl), str(lbl))
-            plt.text(plane_centroids[i, 0], plane_centroids[i, 1], alpha2, fontsize=12,
-                     ha='center', va='center')
-
-    plt.legend()
-    plt.title("UMAP projection (centroids + sample)")
-    plt.show()
-
 def diagnose_model(model, checkpoint):
     print("\n🔍 MODEL DIAGNOSTICS 🔍")
     
@@ -287,4 +250,3 @@ if __name__ == "__main__":
     predict_image(samples=sample_imgs, model=model)
 
     # diagnose_model(model, ckpt)
-    # project_and_plot(embs=embeddings, sample_emb=np.array(img), id2label_map=id2label_map, labels=labels)
