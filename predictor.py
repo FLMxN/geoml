@@ -1,5 +1,4 @@
 import torch
-from transformers import AutoImageProcessor, ResNetForImageClassification, AutoConfig
 from PIL import Image
 import torch.nn.functional as F
 from torchvision import transforms
