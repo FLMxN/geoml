@@ -9,10 +9,8 @@ from torchvision import transforms, models
 from PIL import Image
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
-from umap import UMAP
 from tqdm import tqdm
 from predictor import predict_image
-from transformers import AutoImageProcessor
 from datasets import load_dataset
 
 
