@@ -7,7 +7,6 @@ import torch
 from torch import nn
 from torchvision import transforms, models
 from PIL import Image
-import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 from predictor import predict_image
