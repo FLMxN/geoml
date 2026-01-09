@@ -19,6 +19,11 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+### Dataset
+Dataset used for training the [developer model](#model-setup) consists of <ins>**approximately 11.5k panorama images of 56 countries**</ins> (around 175 panoramas for each class). Dataset itself and additional information can be found on [Hugging Face](https://huggingface.co/datasets/stochastic/random_streetview_images_pano_v0.0.2)
+
+**Credits**: [stochastic](https://huggingface.co/stochastic) (Winson Truong)
+
 ## Installation
 ### Dependencies
 Kopernik mostly requires a standart package of machine learning and image processing libraries for Python >= 3.12 (including CUDA-supporting version of PyTorch and collateral) as well as CUDA-supporting GPU for training and/or inference.
