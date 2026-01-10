@@ -28,14 +28,14 @@ Dataset used for training the [developer model](#model-setup) consists of <ins>*
 ### Dependencies
 Kopernik mostly requires a standart package of machine learning and image processing libraries for Python >= 3.12 (including CUDA-supporting version of PyTorch and collateral) as well as CUDA-supporting GPU for training and/or inference.
 ```
-pip install torch torchvision scikit-learn datasets numpy tqdm pathlib
+pip install torch torchvision scikit-learn datasets numpy tqdm pathlib dotenv
 ```
 ### Model setup
 In order to use pretrained fine-tuned model of the latest <ins>**developer version**</ins>, download it via [Hugging Face](https://huggingface.co/flmxn/resnet50-streetview/blob/main/resnet50_streetview_imagenet1k.pth)
 
 Otherwise, to train Kopernik with your own configuration, look into [torch_trainer.py](torch_trainer.py)
 
-Before start, make sure to insert the path to your model and sample pictures in the inference config at [torch_main.py](torch_main.py)
+Before start, make sure to confugire the path to your model in [.env](.env) file and sample pictures in the inference config at [torch_main.py](torch_main.py)
 
 ## Understanding predictions and labels
 > [!NOTE]
