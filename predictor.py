@@ -1,4 +1,5 @@
 import torch
+from PIL import Image
 import torch.nn.functional as F
 from torchvision import transforms
 from numpy import mean
