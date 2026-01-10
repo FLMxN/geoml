@@ -37,14 +37,48 @@ Otherwise, to train Kopernik with your own configuration, look into [torch_train
 
 Before start, make sure to insert the path to your model and sample pictures in the inference config at [torch_main.py](torch_main.py)
 
+## Understanding predictions and labels
+> [!NOTE]
+> This section is constantly improving and getting new updates, based on tests and feedback.
+
+> [!IMPORTANT]
+> When working with a mathematical model, it is a common mistake to take it's predictions as-is. It is crucial to understand the meaning behind each label in a particular model architecture. [Developer model](#model-setup) is far from flawless, just as any other mathematical predictor of such nature.
+
+To fairly estimate and interpret predictions of [this particular](#model-setup) model, let's categorize labels inside it's computing space.
++ <ins>**Null point attractors:**</ins> **Poland** (PL), **New Zealand** (NZ), **Bhutan** (BT), **Eswatini** (SZ), **Cambodia** (KH) and **Argentina** (AR). These labels usually represent particular ambiguity of image features. Results, containing these labels as *top_k* are <ins>*unreliable*</ins> and serve no straightforward meaning due to lack of images' informative features.
+
+> [!TIP]
+> If you want to group <ins>**null point attractors**</ins> as **UNDEFINED** when listing predictions, check out [this](#startup)
+  
++ <ins>**Common attractors:**</ins>
+  - **Taiwan** (TW) and **South Korea** (KR) labels represent features of developed mostly Asian countries, although certain European or American landscapes can fit into this space as well. More often than not represents large urban centres of China, India, Japan, Australia, USA and Russia.
+  - **Czech Republic** (CZ) label represents features of mostly post-soviet countries, although certain Eastern European landscapes can fit into this space as well. More often than not represents rural or small urban centres of Russia, Ukraine, Belarus, Poland, Estonia, Latvia and Lithuania.
+  - **Finland** (FI) label represents features of mostly northern countries, although certain European landscapes can fit into this space as well. More often than not represents northern medium urban centres of Norway, Sweden, Finland, Denmark, Iceland and Russia.
+  - **Spain** (ES) label represents features of mostly European countries, although certain American landscapes can fit into this space as well. More often than not represents urban centres of France, Spain, Portugal and Italy.
+
++ <ins>**Particular attractors:**</ins>
+  - **Botswana** (BW) label may represent features of rural or small urban centres of Japan.
+  - **Mexico** (MX) label may represent features of rural or small urban centres of South America.
+  - **Romania** (RO) label may represent features of highways or other kind of purely road images.
+  - **Canada** (CA) label may represent features of neighbourhoods in USA.
+
 ## Inference
 ### Startup
-If you completed [model setup](#model-setup) properly, inference requires no any additional preparations --> launch [torch_main.py](torch_main.py) and voila!
-### Output
-> [!WARNING]
-> Please be aware that any coordinate-related output contains no meaningful information by the day of ***Jan 9, 2026***
+If you completed [model setup](#model-setup) properly, inference requires no any additional preparations.
+```
+python torch_main.py
+```
+> [!TIP]
+> Default output mode is verbose. In order to hide debug logs and display more user-experience information, set **IS_PRETTY** in the inference config to <ins>*True*</ins> or pass additional argument when starting inference from shell:
+> ```
+> python torch_main.py pretty
+> ``` 
 
-**Example ([pics/t2.png](pics/t2.png))**
+### Output
+> [!TIP]
+> Make sure to read [this](#understanding-predictions-and-labels) before digesting raw verbose output provided below.
+
+**Example of verbose output ([pics/t2.png](pics/t2.png))**
 ```
 Using device: cuda
 Checkpoint structure:
@@ -73,11 +107,9 @@ Checkpoint structure:
 ✅ Multi-task checkpoint detected (both heads present)
 ✅ Checkpoint loaded successfully (strict mode)
 
-Coordinates of (0, <PIL.Image.Image image mode=RGB size=988x561 at 0x167719A1CD0>): -0.09785331040620804, 0.3668176233768463
+(0, <PIL.Image.Image image mode=RGB size=988x561 at 0x1BEB9259220>) is loaded
 
-Coordinates of (1, <PIL.Image.Image image mode=RGB size=997x561 at 0x16768D72900>): -0.06961575150489807, 0.41150110960006714
-
-Coordinates: -0.08373452723026276, 0.3891593813896179
+(1, <PIL.Image.Image image mode=RGB size=997x561 at 0x1BEB9BA36E0>) is loaded
 
 Regional predictions:
     Europe: 98.67
@@ -129,13 +161,11 @@ Debug data, optional. [Developer model](#model-setup) was trained through 56 epo
 Debug data, optional. [Developer model](#model-setup) successfully loaded with no compromise, displaying first 10 keys of own state dictionary.
 
 ```
-Coordinates of (0, <PIL.Image.Image image mode=RGB size=988x561 at 0x167719A1CD0>): -0.09785331040620804, 0.3668176233768463
+(0, <PIL.Image.Image image mode=RGB size=988x561 at 0x2A2733D63C0>) is loaded
 
-Coordinates of (1, <PIL.Image.Image image mode=RGB size=997x561 at 0x16768D72900>): -0.06961575150489807, 0.41150110960006714
-
-Coordinates: -0.08373452723026276, 0.3891593813896179
+(1, <PIL.Image.Image image mode=RGB size=997x561 at 0x2A27CA29FA0>) is loaded
 ```
-Effectively useless data by the date of ***Jan 09, 2026***. [Developer model](#model-setup) has loaded and processed [t2.png](pics/t2.png) with 2 different scaling strategies (stretch and crop). Coordinate-related data serves no meaning (yet).
+[Developer model](#model-setup) has loaded and processed [t2.png](pics/t2.png) with 2 different scaling strategies (stretch and crop).
 
 ```
 Regional predictions:
@@ -157,28 +187,6 @@ Particular predictions:
     AD: 1.93
 ```
 Features of [t2.png](pics/t2.png) seem to mostly represent features of **Germany** (DE) and **Czech Republic** (CZ), followed up by **Slovenia** (SI), **Portugal** (PT) and **Andorra** (AD). All labels respect the naming standart of [**ISO 3166-1 alpha-2**](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2).
-
-## Understanding predictions and labels
-> [!NOTE]
-> This section is constantly improving and getting new updates, based on tests and feedback.
-
-> [!IMPORTANT]
-> When working with a mathematical model, it is a common mistake to take it's predictions as-is. It is crucial to understand the meaning behind each label in a particular model architecture. [Developer model](#model-setup) is far from flawless, just as any other mathematical predictor of such nature.
-
-To fairly estimate and interpret predictions of [this particular](#model-setup) model, let's categorize labels inside it's computing space.
-+ <ins>**Null point attractors:**</ins> **Poland** (PL), **New Zealand** (NZ), **Bhutan** (BT), **Eswatini** (SZ), **Cambodia** (KH) and **Argentina** (AR). These labels usually represent particular ambiguity of image features. Results, containing these labels as *top_k* are <ins>*unreliable*</ins> and serve no straightforward meaning due to lack of images' informative features.
-  
-+ <ins>**Common attractors:**</ins>
-  - **Taiwan** (TW) and **South Korea** (KR) labels represent features of developed mostly Asian countries, although certain European or American landscapes can fit into this space as well. More often than not represents large urban centres of China, India, Japan, Australia, USA and Russia.
-  - **Czech Republic** (CZ) label represents features of mostly post-soviet countries, although certain Eastern European landscapes can fit into this space as well. More often than not represents rural or small urban centres of Russia, Ukraine, Belarus, Poland, Estonia, Latvia and Lithuania.
-  - **Finland** (FI) label represents features of mostly northern countries, although certain European landscapes can fit into this space as well. More often than not represents northern medium urban centres of Norway, Sweden, Finland, Denmark, Iceland and Russia.
-  - **Spain** (ES) label represents features of mostly European countries, although certain American landscapes can fit into this space as well. More often than not represents urban centres of France, Spain, Portugal and Italy.
-
-+ <ins>**Particular attractors:**</ins>
-  - **Botswana** (BW) label may represent features of rural or small urban centres of Japan.
-  - **Mexico** (MX) label may represent features of rural or small urban centres of South America.
-  - **Romania** (RO) label may represent features of highways or other kind of purely road images.
-  - **Canada** (CA) label may represent features of neighbourhoods in USA.
 
 ## Feature visualising
 > [!NOTE]
