@@ -10,6 +10,9 @@ from tqdm import tqdm
 import warnings
 from torch_main import load_model_checkpoint
 import torchvision.transforms.functional as TF
+import os
+from dotenv import load_dotenv
+
 
 warnings.filterwarnings('ignore')
 
@@ -20,7 +23,7 @@ target1_idx = 33
 target2_idx = 35
 #---------------------------------------------------------------------------
 
-ckpt_path = "E://resnet50_streetview_imagenet1k.pth"
+ckpt_path = os.getenv("CKPT")
 model, ckpt = load_model_checkpoint(ckpt_path, device=DEVICE, num_classes=56)
 
 model.eval()

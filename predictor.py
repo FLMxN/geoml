@@ -1,6 +1,4 @@
 import torch
-from transformers import AutoImageProcessor, ResNetForImageClassification, AutoConfig
-from PIL import Image
 import torch.nn.functional as F
 from torchvision import transforms
 from numpy import mean
@@ -8,37 +6,63 @@ from numpy import mean
 HEIGHT = 561
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-regions = {
-    "Europe": ["AD", "BE", "BG", "CH", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GB", "GR", "HR", "HU", "IE", "IS", "IT", "LT", "LV", "NL", "NO", "PL", "PT", "RO", "RU", "SE", "SI", "SK", "UA"],
-    "Asia": ["AE", "BD", "BT", "HK", "ID", "IL", "JP", "KH", "KR", "MY", "SG", "TH", "TW"],
-    "Oceania": ["AU", "NZ"],
-    "North America": ["CA", "MX", "US"],
-    "South America": ["AR", "BR", "CL", "CO", "PE"],
-    "Africa": ["BW", "SZ", "ZA"]
-}
-
 preprocess = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406],
                          std=[0.229, 0.224, 0.225])
 ])
 
-def predict_image(model, samples, top_k=5, device=DEVICE):
+def predict_image(model, samples, top_k=5, device=DEVICE, IS_PRETTY=False):
 
-    state_score = {
-    "AD":0, "AE":0, "AR":0, "AU":0,
-    "BD":0, "BE":0, "BG":0, "BR":0, "BT":0,
-    "BW":0, "CA":0, "CH":0, "CL":0, "CO":0,
-    "CZ":0, "DE":0, "DK":0, "EE":0, "ES":0,
-    "FI":0, "FR":0, "GB":0, "GR":0, "HK":0,
-    "HR":0, "HU":0, "ID":0, "IE":0, "IL":0,
-    "IS":0, "IT":0, "JP": 0, "KH":0, "KR":0,
-    "LT":0, "LV":0, "MX":0, "MY":0, "NL":0,
-    "NO":0, "NZ":0, "PE":0, "PL":0, "PT":0,
-    "RO":0, "RU":0, "SE":0, "SG":0,
-    "SI":0, "SK":0, "SZ":0, "TH":0, "TW":0,
-    "UA":0, "US":0, "ZA":0
-}
+    if IS_PRETTY:
+        state_score = {
+        "AD":0, "AE":0, "AR":0, "AU":0,
+        "BD":0, "BE":0, "BG":0, "BR":0, "BT":0,
+        "BW":0, "CA":0, "CH":0, "CL":0, "CO":0,
+        "CZ":0, "DE":0, "DK":0, "EE":0, "ES":0,
+        "FI":0, "FR":0, "GB":0, "GR":0, "HK":0,
+        "HR":0, "HU":0, "ID":0, "IE":0, "IL":0,
+        "IS":0, "IT":0, "JP": 0, "KH":0, "KR":0,
+        "LT":0, "LV":0, "MX":0, "MY":0, "NL":0,
+        "NO":0, "NZ":0, "PE":0, "PL":0, "PT":0,
+        "RO":0, "RU":0, "SE":0, "SG":0,
+        "SI":0, "SK":0, "SZ":0, "TH":0, "TW":0,
+        "UA":0, "US":0, "ZA":0, "UNDEFINED": 0
+    }
+        regions = {
+            "Europe": ["AD", "BE", "BG", "CH", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GB", "GR", "HR", "HU", "IE", "IS", "IT", "LT", "LV", "NL", "NO", "PT", "RO", "RU", "SE", "SI", "SK", "UA"],
+            "Asia": ["AE", "BD", "HK", "ID", "IL", "JP", "KR", "MY", "SG", "TH", "TW"],
+            "Oceania": ["AU"],
+            "North America": ["CA", "MX", "US"],
+            "South America": ["BR", "CL", "CO", "PE"],
+            "Africa": ["BW", "ZA"],
+            "Undefined": ["SZ", "AR", "KH", "PL", "NZ", "BT"]
+        }
+        unk_score = 0
+    else:
+        regions = {
+            "Europe": ["AD", "PL", "BE", "BG", "CH", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GB", "GR", "HR", "HU", "IE", "IS", "IT", "LT", "LV", "NL", "NO", "PT", "RO", "RU", "SE", "SI", "SK", "UA"],
+            "Asia": ["AE", "BT", "BD", "KH", "HK", "ID", "IL", "JP", "KR", "MY", "SG", "TH", "TW"],
+            "Oceania": ["AU", "NZ"],
+            "North America": ["CA", "MX", "US"],
+            "South America": ["BR", "AR", "CL", "CO", "PE"],
+            "Africa": ["BW", "SZ", "ZA"]
+        }
+        state_score = {
+        "AD":0, "AE":0, "AR":0, "AU":0,
+        "BD":0, "BE":0, "BG":0, "BR":0, "BT":0,
+        "BW":0, "CA":0, "CH":0, "CL":0, "CO":0,
+        "CZ":0, "DE":0, "DK":0, "EE":0, "ES":0,
+        "FI":0, "FR":0, "GB":0, "GR":0, "HK":0,
+        "HR":0, "HU":0, "ID":0, "IE":0, "IL":0,
+        "IS":0, "IT":0, "JP": 0, "KH":0, "KR":0,
+        "LT":0, "LV":0, "MX":0, "MY":0, "NL":0,
+        "NO":0, "NZ":0, "PE":0, "PL":0, "PT":0,
+        "RO":0, "RU":0, "SE":0, "SG":0,
+        "SI":0, "SK":0, "SZ":0, "TH":0, "TW":0,
+        "UA":0, "US":0, "ZA":0
+        }
+    
     eu_score = 0
     asia_score = 0
     ocean_score = 0
@@ -60,7 +84,6 @@ def predict_image(model, samples, top_k=5, device=DEVICE):
             except:
                 outputs = model(inputs)
         
-        # Extract outputs based on model structure
         if isinstance(outputs, dict):
             logits = outputs.get('logits', outputs.get('classification_logits'))
             longitude = outputs['longitude'].cpu().numpy()[0]
@@ -75,9 +98,10 @@ def predict_image(model, samples, top_k=5, device=DEVICE):
         else:
             logits = outputs
         
-        # Store coordinates if found
         if 'longitude' in locals() and 'latitude' in locals():
-            print(f"\nCoordinates of {x}: {longitude}, {latitude}")
+            if not IS_PRETTY:
+                print(f"\n{x} is loaded")
+                # print(f"\nCoordinates of {x}: {longitude}, {latitude}")
             longitudes.append(longitude)
             latitudes.append(latitude)
         
@@ -117,15 +141,25 @@ def predict_image(model, samples, top_k=5, device=DEVICE):
                     ocean_score = ocean_score + prob
                 case country if country in regions["Africa"]:
                     africa_score = africa_score + prob
+                case country if country in regions["Undefined"]:
+                    unk_score = unk_score + prob
+    
+    if IS_PRETTY:
+        for i, n in state_score.items():
+            if i in regions["Undefined"]:
+                state_score["UNDEFINED"] += n
+                state_score[i] = 0
 
     preds = dict(sorted(
     ((k, float(v)) for k, v in state_score.items() if v != 0),
     key=lambda x: x[1],
     reverse=True))
 
-    print(f"\nCoordinates: {mean(longitudes)}, {mean(latitudes)}") #fuck this shit
+    # print(f"\nCoordinates: {mean(longitudes)}, {mean(latitudes)}") #fuck this shit
 
     print(f"\nRegional predictions:")
+    if IS_PRETTY:
+        print(f"    Undefined: {unk_score*100/len(samples):.2f}")
     print(f"    Europe: {eu_score*100/len(samples):.2f}")
     print(f"    Asia: {asia_score*100/len(samples):.2f}")
     print(f"    North America: {na_score*100/len(samples):.2f}")

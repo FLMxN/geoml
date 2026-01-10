@@ -1,20 +1,14 @@
-import pandas as pd
 import os
-import sys
 from pathlib import Path
 import numpy as np
 import torch
 from torch import nn
 from torchvision import transforms, models
 from PIL import Image
-import matplotlib.pyplot as plt
-from sklearn.preprocessing import StandardScaler
-from umap import UMAP
-from tqdm import tqdm
 from predictor import predict_image
-from transformers import AutoImageProcessor
 from datasets import load_dataset
-
+import sys
+from dotenv import load_dotenv
 
 
 # full_dataset = load_dataset("stochastic/random_streetview_images_pano_v0.0.2", 
@@ -26,17 +20,24 @@ from datasets import load_dataset
 #         print(i)
 #         imgs.append(example["image"])
 
-
-
-imgs = ["pics/t1.png"]
-# imgs = ["pics/image.png", "pics/zahodryazan.jpg", "pics/ryazan-russia-city-view-3628679470.jpg", "pics/t1.png", "pics/t2.png", "pics/t3.png", "pics/t4.png", "pics/ryazan21080-371224838.jpg", "pics/Ryazan-03.jpg", "pics/5df12e8f9e3d0-5140-sobornaja-ploschad.jpeg"]
+# -------------------------------------------------- CONFIG ----------------------------------------------------
 HEIGHT = 561
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+IS_PRETTY = True
+IMGS = ["pics/image.png"]
+# --------------------------------------------------------------------------------------------------------------
 
+load_dotenv()
 np.random.seed(42)
 torch.manual_seed(42)
 torch.cuda.manual_seed_all(42)
 
+try:
+    if sys.argv[1] == 'pretty':
+        IS_PRETTY = True
+except:
+    pass
+    
 id2label_map = {
     7: "AD", 16: "AE", 15: "AR", 43: "AU", 30: "BD",
     26: "BE", 4: "BG", 46: "BR", 48: "BT", 31: "BW",
@@ -118,15 +119,16 @@ def load_model_checkpoint(path: str, device: torch.device, num_classes=56):
     # Load checkpoint
     checkpoint = torch.load(path, map_location="cpu")
     
-    print("📊 Checkpoint structure:")
-    if isinstance(checkpoint, dict):
-        for k, v in checkpoint.items():
-            if hasattr(v, 'shape'):
-                print(f"  {k}: shape {v.shape}")
-            elif isinstance(v, dict):
-                print(f"  {k}: dict with {len(v)} keys")
-            else:
-                print(f"  {k}: {type(v).__name__} = {v}")
+    if not IS_PRETTY:
+        print("Checkpoint structure:")
+        if isinstance(checkpoint, dict):
+            for k, v in checkpoint.items():
+                if hasattr(v, 'shape'):
+                    print(f"  {k}: shape {v.shape}")
+                elif isinstance(v, dict):
+                    print(f"  {k}: dict with {len(v)} keys")
+                else:
+                    print(f"  {k}: {type(v).__name__} = {v}")
     
     # Extract the actual model weights
     if isinstance(checkpoint, dict):
@@ -147,23 +149,25 @@ def load_model_checkpoint(path: str, device: torch.device, num_classes=56):
     state_dict = clean_state_dict_keys(state_dict)
     
     # Debug: Show first few keys
-    print("\n📋 State dict keys (first 10):")
-    for i, (k, v) in enumerate(list(state_dict.items())[:10]):
-        if hasattr(v, 'shape'):
-            print(f"  {k}: shape {v.shape}")
-        else:
-            print(f"  {k}: {type(v)}")
+    if not IS_PRETTY:
+        print("\n📋 State dict keys (first 10):")
+        for i, (k, v) in enumerate(list(state_dict.items())[:10]):
+            if hasattr(v, 'shape'):
+                print(f"  {k}: shape {v.shape}")
+            else:
+                print(f"  {k}: {type(v)}")
     
     # Check if we have the new multi-task structure
     has_country_head = any('country_head' in k for k in state_dict.keys())
     has_coordinate_head = any('coordinate_head' in k for k in state_dict.keys())
     
-    if has_country_head and has_coordinate_head:
-        print("\n✅ Multi-task checkpoint detected (both heads present)")
-    elif has_country_head:
-        print("\n⚠️ Only country_head found, coordinate_head missing")
-    else:
-        print("\n⚠️ Old checkpoint detected (no custom heads)")
+    if not IS_PRETTY:
+        if has_country_head and has_coordinate_head:
+            print("\n✅ Multi-task checkpoint detected (both heads present)")
+        elif has_country_head:
+            print("\n⚠️ Only country_head found, coordinate_head missing")
+        else:
+            print("\n⚠️ Old checkpoint detected (no custom heads)")
     
     # Load the weights
     try:
@@ -223,19 +227,16 @@ def diagnose_model(model, checkpoint):
         print(f"Checkpoint coordinate loss: {checkpoint['val_coord_loss']:.4f}")
 
 if __name__ == "__main__":
-    if os.path.exists(str(Path(__file__).absolute().parent) + "/np_cache/embeddings.npy"):
-        embeddings = np.load("np_cache/embeddings.npy")
-        labels = np.load("np_cache/labels.npy")
-        print("loaded data via save at /np_cache")
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Using device:", device)
 
-    ckpt_path = "E://resnet50_streetview_imagenet1k.pth"
+    if not IS_PRETTY:
+        print("Using device:", device)
+
+    ckpt_path = os.getenv("CKPT")
     model, ckpt = load_model_checkpoint(ckpt_path, device=device, num_classes=56)
     sample_imgs = []
 
-    for i in enumerate(imgs, 0):
+    for i in enumerate(IMGS, 0):
         img_crop = crop_resize(Image.open(i[1]).convert("RGB"))
         img_stretch = stretch_resize(Image.open(i[1]).convert("RGB"))
         sample_imgs.append(img_crop)
@@ -247,6 +248,6 @@ if __name__ == "__main__":
     #     img = resize(i[1]).convert("RGB")
     #     sample_imgs.append(img)
 
-    predict_image(samples=sample_imgs, model=model)
+    predict_image(samples=sample_imgs, model=model, IS_PRETTY=IS_PRETTY)
 
     # diagnose_model(model, ckpt)
