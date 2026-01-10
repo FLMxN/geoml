@@ -142,4 +142,4 @@ Features of [t2.png](pics/t2.png) seem to mostly represent features of **Germany
 > [!NOTE]
 > This section is not complete and requires extension.
 
-In **debug** or **research purposes**, Kopernik is able to get a mean image of class features among all it's examples in the dataset. In order to do this, configure the [torch_visualizer.py](torch_visualizer.py) and run to get 2 images of chosen classes and **compare** them in % of similarity.
+For **debug** or **research purposes**, Kopernik is able to get a mean image of class features among all it's examples in the dataset. In order to do this, configure the [torch_visualizer.py](torch_visualizer.py) and run to get 2 images of chosen classes and **compare** them in % of similarity.
